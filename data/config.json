@@ -1,0 +1,9 @@
+{
+  "worktreePath": "/Users/jackenholland/AppDev/thetriage",
+  "repoPath": "/Users/jackenholland/AppDev/thetriage",
+  "hikewiseAppId": "com.hikewise.app",
+  "autoRunTests": true,
+  "maxAgentRuntime": 3600,
+  "claudeModel": "opus",
+  "note": "worktreePath and repoPath are the same because running locally on Mac. For Lenovo setup, create a separate worktree: git worktree add ../thetriage-agent -b agent-work"
+}

@@ -1,0 +1,16 @@
+{
+  "name": "hikewise-agent-dashboard",
+  "version": "1.0.0",
+  "description": "HikeWise Agent Control Dashboard",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.16.0",
+    "chokidar": "^3.5.3",
+    "uuid": "^9.0.0"
+  }
+}

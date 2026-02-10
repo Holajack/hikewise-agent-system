@@ -1,0 +1,1365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HikeWise · Agent Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-primary: #09090b;
+    --bg-secondary: #0f1117;
+    --bg-card: #16181d;
+    --bg-card-hover: #1c1f26;
+    --bg-input: #0c0d12;
+    --bg-elevated: #1a1d24;
+    --border: #23262f;
+    --border-subtle: #1c1f26;
+    --border-active: #3b82f6;
+    --text-primary: #f0f2f5;
+    --text-secondary: #8b95a5;
+    --text-muted: #4b5563;
+    --accent-blue: #3b82f6;
+    --accent-green: #10b981;
+    --accent-amber: #f59e0b;
+    --accent-red: #ef4444;
+    --accent-purple: #8b5cf6;
+    --accent-teal: #06b6d4;
+    --accent-pink: #ec4899;
+    --glow-blue: rgba(59, 130, 246, 0.08);
+    --glow-green: rgba(16, 185, 129, 0.08);
+    --glow-red: rgba(239, 68, 68, 0.06);
+    --glow-purple: rgba(139, 92, 246, 0.08);
+    --radius: 12px;
+    --radius-sm: 8px;
+    --radius-xs: 5px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 4px 20px rgba(0,0,0,0.2);
+    --shadow-lg: 0 8px 40px rgba(0,0,0,0.4);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* --- Top Bar --- */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(16px);
+    background: rgba(15, 17, 23, 0.85);
+  }
+
+  .topbar-left { display: flex; align-items: center; gap: 14px; }
+
+  .logo {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+  }
+  .logo-sub { color: var(--text-muted); font-weight: 400; font-size: 13px; }
+
+  .agent-status-badge {
+    display: flex; align-items: center; gap: 7px;
+    padding: 5px 12px; border-radius: 20px;
+    font-size: 12px; font-weight: 500;
+    transition: all 0.3s;
+  }
+  .agent-status-badge.idle { background: rgba(75,85,99,0.15); border: 1px solid var(--text-muted); color: var(--text-secondary); }
+  .agent-status-badge.running { background: var(--glow-blue); border: 1px solid var(--accent-blue); color: var(--accent-blue); animation: pulse-glow 2s infinite; }
+  .agent-status-badge.testing { background: var(--glow-purple); border: 1px solid var(--accent-purple); color: var(--accent-purple); animation: pulse-glow 1.5s infinite; }
+  .agent-status-badge.error { background: var(--glow-red); border: 1px solid var(--accent-red); color: var(--accent-red); }
+
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 6px rgba(59,130,246,0.15); }
+    50% { box-shadow: 0 0 16px rgba(59,130,246,0.3); }
+  }
+
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .status-dot.running, .status-dot.testing { animation: blink 1.2s ease-in-out infinite; }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .topbar-actions { display: flex; gap: 8px; align-items: center; }
+
+  /* --- Buttons --- */
+  .btn {
+    padding: 7px 14px; border-radius: var(--radius-xs);
+    font-family: inherit; font-size: 12px; font-weight: 500;
+    border: 1px solid var(--border); background: var(--bg-card);
+    color: var(--text-primary); cursor: pointer;
+    transition: all 0.12s ease; display: inline-flex;
+    align-items: center; gap: 5px; white-space: nowrap;
+  }
+  .btn:hover { background: var(--bg-card-hover); border-color: var(--text-muted); transform: translateY(-0.5px); }
+  .btn:active { transform: translateY(0); }
+  .btn-primary { background: var(--accent-blue); border-color: var(--accent-blue); color: white; }
+  .btn-primary:hover { background: #2563eb; box-shadow: 0 2px 12px rgba(59,130,246,0.25); }
+  .btn-success { background: var(--accent-green); border-color: var(--accent-green); color: white; }
+  .btn-success:hover { background: #059669; }
+  .btn-danger { background: transparent; border-color: var(--accent-red); color: var(--accent-red); }
+  .btn-danger:hover { background: var(--glow-red); }
+  .btn-ghost { background: transparent; border-color: transparent; color: var(--text-secondary); padding: 5px 8px; }
+  .btn-ghost:hover { color: var(--text-primary); background: var(--bg-card); }
+  .btn-sm { padding: 4px 10px; font-size: 11px; }
+  .btn-xs { padding: 3px 7px; font-size: 10px; border-radius: 4px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* --- Main Layout --- */
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    grid-template-rows: auto 1fr;
+    gap: 0;
+    height: calc(100vh - 49px);
+  }
+
+  /* --- Stats Bar --- */
+  .stats-bar {
+    grid-column: 1 / -1;
+    display: flex; gap: 3px; padding: 10px 20px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .stat-card {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px; background: var(--bg-card);
+    border-radius: var(--radius-xs); min-width: fit-content;
+    border: 1px solid var(--border-subtle);
+  }
+  .stat-number {
+    font-size: 20px; font-weight: 700;
+    font-family: 'JetBrains Mono', monospace; line-height: 1;
+  }
+  .stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.6px; font-weight: 500; }
+
+  /* --- Kanban Board --- */
+  .kanban-area { padding: 16px 20px; overflow-y: auto; }
+  .kanban-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .kanban-header h2 { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+
+  .kanban-board { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; min-height: 300px; }
+  .kanban-column {
+    background: var(--bg-secondary); border-radius: var(--radius);
+    border: 1px solid var(--border-subtle); display: flex;
+    flex-direction: column; min-height: 180px;
+  }
+  .kanban-col-header {
+    padding: 10px 12px; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.7px;
+    color: var(--text-muted); border-bottom: 1px solid var(--border-subtle);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .kanban-col-header .count {
+    background: var(--bg-primary); padding: 1px 7px; border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  }
+  .col-queued .kanban-col-header { border-top: 2px solid var(--text-muted); border-radius: var(--radius) var(--radius) 0 0; }
+  .col-in-progress .kanban-col-header { border-top: 2px solid var(--accent-blue); border-radius: var(--radius) var(--radius) 0 0; }
+  .col-review .kanban-col-header { border-top: 2px solid var(--accent-amber); border-radius: var(--radius) var(--radius) 0 0; }
+  .col-done .kanban-col-header { border-top: 2px solid var(--accent-green); border-radius: var(--radius) var(--radius) 0 0; }
+  .col-failed .kanban-col-header { border-top: 2px solid var(--accent-red); border-radius: var(--radius) var(--radius) 0 0; }
+
+  .kanban-cards { padding: 6px; flex: 1; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+
+  .task-card {
+    background: var(--bg-card); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm); padding: 10px 11px;
+    transition: all 0.12s; position: relative;
+  }
+  .task-card:hover { background: var(--bg-card-hover); border-color: var(--border); }
+  .task-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; }
+  .task-card-title { font-size: 12px; font-weight: 500; line-height: 1.35; flex: 1; }
+  .task-card-delete {
+    opacity: 0; transition: opacity 0.15s;
+    background: none; border: none; color: var(--text-muted);
+    cursor: pointer; padding: 2px; font-size: 14px; line-height: 1;
+    border-radius: 4px; flex-shrink: 0;
+  }
+  .task-card:hover .task-card-delete { opacity: 0.6; }
+  .task-card-delete:hover { opacity: 1 !important; color: var(--accent-red); background: var(--glow-red); }
+  .task-card-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+  .task-priority {
+    font-size: 9px; padding: 2px 6px; border-radius: 4px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  .priority-critical { background: rgba(239,68,68,0.15); color: var(--accent-red); }
+  .priority-high { background: rgba(245,158,11,0.15); color: var(--accent-amber); }
+  .priority-medium { background: rgba(59,130,246,0.15); color: var(--accent-blue); }
+  .priority-low { background: rgba(75,85,99,0.15); color: var(--text-muted); }
+  .task-source { font-size: 9px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+  .task-actions { display: flex; gap: 3px; margin-top: 7px; flex-wrap: wrap; }
+
+  /* --- Right Panel --- */
+  .right-panel {
+    background: var(--bg-secondary); border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .panel-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg-secondary); }
+  .panel-tab {
+    flex: 1; padding: 9px 4px; text-align: center;
+    font-size: 11px; font-weight: 500; color: var(--text-muted);
+    cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.12s;
+  }
+  .panel-tab:hover { color: var(--text-secondary); }
+  .panel-tab.active { color: var(--accent-teal); border-bottom-color: var(--accent-teal); }
+  .panel-content { flex: 1; overflow-y: auto; padding: 14px; display: none; }
+  .panel-content.active { display: block; }
+
+  /* --- Log Viewer --- */
+  .log-viewer {
+    background: var(--bg-primary); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm); padding: 10px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    line-height: 1.6; color: var(--text-secondary);
+    max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+  }
+
+  /* --- Test Categories --- */
+  .test-category { margin-bottom: 16px; }
+  .test-category-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0; cursor: pointer; user-select: none;
+  }
+  .test-category-label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.7px; color: var(--text-muted);
+  }
+  .test-category-badge {
+    font-size: 9px; padding: 1px 6px; border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg-card); border: 1px solid var(--border-subtle);
+  }
+  .test-category-items { display: flex; flex-direction: column; gap: 4px; }
+  .test-flow-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px; background: var(--bg-card);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+    transition: all 0.12s;
+  }
+  .test-flow-item:hover { border-color: var(--border); background: var(--bg-card-hover); }
+  .test-flow-info { flex: 1; min-width: 0; }
+  .test-flow-name { font-size: 12px; font-weight: 500; display: block; }
+  .test-flow-desc { font-size: 10px; color: var(--text-muted); margin-top: 2px; display: block; }
+  .test-flow-btns { display: flex; gap: 3px; flex-shrink: 0; margin-left: 8px; }
+
+  /* --- Activity Feed --- */
+  .activity-feed { display: flex; flex-direction: column; gap: 3px; }
+  .activity-item {
+    padding: 8px 10px; border-radius: var(--radius-xs);
+    font-size: 12px; border-left: 2px solid var(--border);
+    background: var(--bg-card); transition: all 0.1s;
+  }
+  .activity-item:hover { background: var(--bg-card-hover); }
+  .activity-item.task-created { border-left-color: var(--accent-blue); }
+  .activity-item.agent-started { border-left-color: var(--accent-green); }
+  .activity-item.agent-finished { border-left-color: var(--text-muted); }
+  .activity-item.maestro-complete { border-left-color: var(--accent-purple); }
+  .activity-item.task-failed { border-left-color: var(--accent-red); }
+  .activity-item.task-deleted { border-left-color: var(--accent-red); opacity: 0.7; }
+  .activity-item.task-updated { border-left-color: var(--accent-amber); }
+  .activity-item.task-moved { border-left-color: var(--accent-teal); }
+  .activity-time { font-size: 10px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
+
+  /* --- Modal --- */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); backdrop-filter: blur(6px);
+    z-index: 200; align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px;
+    width: 460px; max-width: 92vw; box-shadow: var(--shadow-lg);
+  }
+  .modal h3 { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display: block; font-size: 11px; font-weight: 500; color: var(--text-secondary); margin-bottom: 4px; letter-spacing: 0.3px; }
+  .form-group input, .form-group textarea, .form-group select {
+    width: 100%; padding: 8px 11px; background: var(--bg-input);
+    border: 1px solid var(--border); border-radius: var(--radius-xs);
+    color: var(--text-primary); font-family: inherit; font-size: 13px;
+    outline: none; transition: border-color 0.15s;
+  }
+  .form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: var(--accent-blue); }
+  .form-group textarea { min-height: 70px; resize: vertical; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+  /* --- Confirm Delete Modal --- */
+  .confirm-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); backdrop-filter: blur(6px);
+    z-index: 250; align-items: center; justify-content: center;
+  }
+  .confirm-overlay.open { display: flex; }
+  .confirm-box {
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px; width: 360px;
+    max-width: 90vw; box-shadow: var(--shadow-lg); text-align: center;
+  }
+  .confirm-box h4 { font-size: 14px; margin-bottom: 8px; }
+  .confirm-box p { font-size: 12px; color: var(--text-secondary); margin-bottom: 18px; line-height: 1.5; }
+  .confirm-box .confirm-actions { display: flex; justify-content: center; gap: 10px; }
+
+  /* --- Config Panel --- */
+  .config-section { margin-bottom: 14px; }
+  .config-section h4 { font-size: 10px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; }
+
+  /* --- Visual Testing Panel --- */
+  .simulator-controls { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .sim-status-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 11px; background: var(--bg-card);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  }
+  .sim-indicator { width: 9px; height: 9px; border-radius: 50%; background: var(--accent-red); flex-shrink: 0; }
+  .sim-indicator.booted { background: var(--accent-green); animation: blink 1.5s infinite; }
+  .sim-indicator.booting { background: var(--accent-amber); animation: blink 0.8s infinite; }
+  .sim-info { flex: 1; font-size: 12px; }
+  .sim-info .sim-name { font-weight: 600; color: var(--text-primary); font-size: 12px; }
+  .sim-info .sim-state { color: var(--text-muted); font-size: 10px; }
+  .sim-device-list { display: flex; flex-direction: column; gap: 3px; max-height: 140px; overflow-y: auto; }
+  .sim-device-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 5px 9px; background: var(--bg-card);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-xs);
+    font-size: 11px; cursor: pointer; transition: all 0.12s;
+  }
+  .sim-device-item:hover { background: var(--bg-card-hover); border-color: var(--border); }
+  .sim-device-item.active { border-color: var(--accent-green); background: var(--glow-green); }
+
+  .recording-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 10px; font-size: 10px; font-weight: 600;
+    background: rgba(239,68,68,0.12); border: 1px solid var(--accent-red); color: var(--accent-red);
+  }
+  .recording-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-red); animation: blink 0.8s infinite; }
+
+  .video-container { position: relative; background: #000; border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 10px; }
+  .video-container video { width: 100%; max-height: 280px; display: block; }
+  .video-placeholder {
+    display: flex; align-items: center; justify-content: center;
+    height: 160px; color: var(--text-muted); font-size: 11px;
+    flex-direction: column; gap: 6px;
+  }
+  .video-placeholder .icon { font-size: 28px; opacity: 0.2; }
+  .recording-list { display: flex; flex-direction: column; gap: 3px; }
+  .recording-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 9px; background: var(--bg-card);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-xs);
+    cursor: pointer; transition: all 0.12s;
+  }
+  .recording-item:hover { background: var(--bg-card-hover); }
+  .recording-item .rec-name { font-size: 11px; font-weight: 500; }
+  .recording-item .rec-meta { font-size: 10px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+
+  .screenshot-gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .screenshot-thumb {
+    position: relative; border-radius: var(--radius-xs); overflow: hidden;
+    border: 1px solid var(--border-subtle); cursor: pointer;
+    transition: all 0.12s; aspect-ratio: 9/16; background: var(--bg-card);
+  }
+  .screenshot-thumb:hover { border-color: var(--accent-blue); transform: scale(1.02); }
+  .screenshot-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .screenshot-thumb .ss-time {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 3px 5px; background: rgba(0,0,0,0.75);
+    font-size: 9px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;
+  }
+
+  .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 300; align-items: center; justify-content: center; cursor: pointer; }
+  .lightbox.open { display: flex; }
+  .lightbox img { max-width: 90vw; max-height: 90vh; border-radius: var(--radius); box-shadow: var(--shadow-lg); }
+
+  .panel-section-header {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.7px; color: var(--text-muted);
+    margin: 14px 0 7px 0; padding-bottom: 4px; border-bottom: 1px solid var(--border-subtle);
+  }
+  .panel-section-header:first-child { margin-top: 0; }
+
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+  /* --- Scanner / Discovery Panel --- */
+  .scanner-controls {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+  }
+  .scanner-progress {
+    margin-bottom: 14px;
+  }
+  .scanner-progress-bar {
+    height: 6px; background: var(--bg-primary); border-radius: 3px;
+    overflow: hidden; margin-bottom: 6px;
+  }
+  .scanner-progress-fill {
+    height: 100%; background: var(--accent-purple); border-radius: 3px;
+    transition: width 0.4s ease; width: 0%;
+  }
+  .scanner-progress-text {
+    font-size: 11px; color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .discovery-summary {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 14px;
+  }
+  .discovery-stat {
+    padding: 8px 10px; background: var(--bg-card);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-xs);
+    text-align: center;
+  }
+  .discovery-stat-value {
+    font-size: 18px; font-weight: 700;
+    font-family: 'JetBrains Mono', monospace; line-height: 1;
+  }
+  .discovery-stat-label {
+    font-size: 9px; color: var(--text-muted); text-transform: uppercase;
+    letter-spacing: 0.5px; margin-top: 3px;
+  }
+  .screen-cards { display: flex; flex-direction: column; gap: 6px; }
+  .screen-card {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 11px; background: var(--bg-card);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+    transition: all 0.12s; cursor: pointer;
+  }
+  .screen-card:hover { background: var(--bg-card-hover); border-color: var(--border); }
+  .screen-card-thumb {
+    width: 36px; height: 64px; border-radius: 4px; overflow: hidden;
+    background: var(--bg-primary); flex-shrink: 0; border: 1px solid var(--border-subtle);
+  }
+  .screen-card-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .screen-card-info { flex: 1; min-width: 0; }
+  .screen-card-name { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .screen-card-meta { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+  .screen-card-status {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .screen-card-status.success { background: var(--accent-green); }
+  .screen-card-status.failed { background: var(--accent-red); }
+  .btn-purple { background: var(--accent-purple); border-color: var(--accent-purple); color: white; }
+  .btn-purple:hover { background: #7c3aed; box-shadow: 0 2px 12px rgba(139,92,246,0.25); }
+
+  @media (max-width: 1024px) {
+    .main { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; }
+    .right-panel { border-left: none; border-top: 1px solid var(--border); max-height: 400px; }
+    .kanban-board { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 640px) {
+    .kanban-board { grid-template-columns: 1fr 1fr; }
+    .stats-bar { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <div class="logo">HikeWise <span class="logo-sub">Agent Control</span></div>
+    <div id="agentBadge" class="agent-status-badge idle">
+      <div class="status-dot"></div>
+      <span id="agentStateText">Idle</span>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <button class="btn btn-sm" onclick="openModal()">+ Task</button>
+    <button class="btn btn-sm" onclick="takeScreenshot()" title="Capture simulator screenshot">Screenshot</button>
+    <button class="btn btn-sm btn-purple" id="btnScanApp" onclick="toggleScanner()">Scan App</button>
+    <button class="btn btn-sm btn-primary" id="btnRunTests" onclick="runAllTests()">Run Tests</button>
+    <button class="btn btn-sm btn-success" id="btnStartAgent" onclick="toggleAgent()">Start Agent</button>
+  </div>
+</header>
+
+<div class="main">
+  <div class="stats-bar">
+    <div class="stat-card"><div><div class="stat-number" id="statQueued" style="color:var(--text-muted)">0</div><div class="stat-label">Queued</div></div></div>
+    <div class="stat-card"><div><div class="stat-number" id="statInProgress" style="color:var(--accent-blue)">0</div><div class="stat-label">In Progress</div></div></div>
+    <div class="stat-card"><div><div class="stat-number" id="statReview" style="color:var(--accent-amber)">0</div><div class="stat-label">Review</div></div></div>
+    <div class="stat-card"><div><div class="stat-number" id="statDone" style="color:var(--accent-green)">0</div><div class="stat-label">Done</div></div></div>
+    <div class="stat-card"><div><div class="stat-number" id="statFailed" style="color:var(--accent-red)">0</div><div class="stat-label">Failed</div></div></div>
+    <div class="stat-card" style="margin-left:auto"><div><div class="stat-number" id="statTodayDone" style="color:var(--accent-teal)">0</div><div class="stat-label">Today</div></div></div>
+  </div>
+
+  <div class="kanban-area">
+    <div class="kanban-header">
+      <h2>Task Board</h2>
+      <button class="btn btn-sm btn-ghost" onclick="refreshState()">Refresh</button>
+    </div>
+    <div class="kanban-board">
+      <div class="kanban-column col-queued"><div class="kanban-col-header">Queued <span class="count" id="countQueued">0</span></div><div class="kanban-cards" id="colQueued"></div></div>
+      <div class="kanban-column col-in-progress"><div class="kanban-col-header">In Progress <span class="count" id="countInProgress">0</span></div><div class="kanban-cards" id="colInProgress"></div></div>
+      <div class="kanban-column col-review"><div class="kanban-col-header">Review <span class="count" id="countReview">0</span></div><div class="kanban-cards" id="colReview"></div></div>
+      <div class="kanban-column col-done"><div class="kanban-col-header">Done <span class="count" id="countDone">0</span></div><div class="kanban-cards" id="colDone"></div></div>
+      <div class="kanban-column col-failed"><div class="kanban-col-header">Failed <span class="count" id="countFailed">0</span></div><div class="kanban-cards" id="colFailed"></div></div>
+    </div>
+  </div>
+
+  <div class="right-panel">
+    <div class="panel-tabs">
+      <div class="panel-tab active" onclick="switchPanel('activity')">Activity</div>
+      <div class="panel-tab" onclick="switchPanel('visual')">Visual</div>
+      <div class="panel-tab" onclick="switchPanel('discovery')">Discovery</div>
+      <div class="panel-tab" onclick="switchPanel('tests')">Tests</div>
+      <div class="panel-tab" onclick="switchPanel('logs')">Logs</div>
+      <div class="panel-tab" onclick="switchPanel('config')">Config</div>
+    </div>
+
+    <div class="panel-content active" id="panelActivity">
+      <div class="activity-feed" id="activityFeed"></div>
+    </div>
+
+    <div class="panel-content" id="panelVisual">
+      <div class="panel-section-header">Simulator</div>
+      <div class="simulator-controls">
+        <div class="sim-status-bar" id="simStatusBar">
+          <div class="sim-indicator" id="simIndicator"></div>
+          <div class="sim-info"><div class="sim-name" id="simName">No simulator detected</div><div class="sim-state" id="simState">Click Scan to detect</div></div>
+          <button class="btn btn-xs" onclick="refreshSimulators()">Scan</button>
+          <button class="btn btn-xs" onclick="takeScreenshot()">Capture</button>
+        </div>
+        <div class="sim-device-list" id="simDeviceList"></div>
+      </div>
+      <div id="appStatusSection" style="margin-bottom:12px;">
+        <div class="sim-status-bar" style="font-size:11px;"><span id="appStatusText" style="flex:1; color:var(--text-muted);">App status unknown</span><button class="btn btn-xs" onclick="checkAppStatus()">Check</button></div>
+      </div>
+      <div class="panel-section-header">Recordings <span id="recordingBadge" style="display:none;" class="recording-badge"><span class="recording-dot"></span> REC</span></div>
+      <div class="video-container" id="videoContainer">
+        <div class="video-placeholder" id="videoPlaceholder"><div class="icon">&#9654;</div><div>No recording yet</div></div>
+        <video id="videoPlayer" controls style="display:none;" preload="metadata"></video>
+      </div>
+      <div class="recording-list" id="recordingList"></div>
+      <div class="panel-section-header">Screenshots</div>
+      <div class="screenshot-gallery" id="screenshotGallery"></div>
+    </div>
+
+    <div class="panel-content" id="panelDiscovery">
+      <div class="scanner-controls">
+        <button class="btn btn-sm btn-purple" id="btnScanToggle" onclick="toggleScanner()">Scan App</button>
+        <span id="scannerStatusText" style="font-size:11px; color:var(--text-muted);">Ready</span>
+      </div>
+      <div class="scanner-progress" id="scannerProgress" style="display:none;">
+        <div class="scanner-progress-bar"><div class="scanner-progress-fill" id="scannerProgressFill"></div></div>
+        <div class="scanner-progress-text" id="scannerProgressText">Starting scan...</div>
+      </div>
+      <div id="discoveryReport">
+        <div style="color:var(--text-muted); font-size:12px; text-align:center; padding:30px 0;">
+          No scan results yet. Click "Scan App" to discover screens.
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-content" id="panelTests">
+      <div style="margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:13px; font-weight:600;">Test Flows</span>
+        <button class="btn btn-sm btn-primary" onclick="runAllTests()">Run All</button>
+      </div>
+      <div id="testFlowList"></div>
+    </div>
+
+    <div class="panel-content" id="panelLogs">
+      <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:13px; font-weight:600;">Agent Output</span>
+        <button class="btn btn-sm btn-ghost" onclick="loadLogs()">Refresh</button>
+      </div>
+      <div class="log-viewer" id="logViewer">Waiting for agent output...</div>
+    </div>
+
+    <div class="panel-content" id="panelConfig">
+      <div class="config-section"><h4>Paths</h4>
+        <div class="form-group"><label>HikeWise Repo Path</label><input id="cfgRepoPath" placeholder="/home/user/hikewise"></div>
+        <div class="form-group"><label>Agent Worktree Path</label><input id="cfgWorktreePath" placeholder="/home/user/hikewise-agent"></div>
+      </div>
+      <div class="config-section"><h4>App</h4>
+        <div class="form-group"><label>App Bundle ID</label><input id="cfgAppId" placeholder="com.hikewise.app"></div>
+      </div>
+      <div class="config-section"><h4>Agent Settings</h4>
+        <div class="form-group"><label>Auto-create tasks from failed tests</label><select id="cfgAutoTests"><option value="true">Yes</option><option value="false">No</option></select></div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="saveConfig()">Save Configuration</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3>Add Task</h3>
+    <div class="form-group"><label>Title</label><input id="taskTitle" placeholder="Fix back navigation on Reviews screen"></div>
+    <div class="form-group"><label>Description</label><textarea id="taskDesc" placeholder="Describe what needs to happen..."></textarea></div>
+    <div style="display:flex; gap:10px;">
+      <div class="form-group" style="flex:1"><label>Priority</label><select id="taskPriority"><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option><option value="low">Low</option></select></div>
+      <div class="form-group" style="flex:1"><label>Status</label><select id="taskStatus"><option value="queued">Queued</option><option value="in-progress">In Progress</option><option value="review">Review</option></select></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="document.getElementById('modalOverlay').classList.remove('open')">Cancel</button>
+      <button class="btn btn-primary" onclick="addTask()">Add Task</button>
+    </div>
+  </div>
+</div>
+
+<div class="confirm-overlay" id="confirmOverlay" onclick="cancelDelete()">
+  <div class="confirm-box" onclick="event.stopPropagation()">
+    <h4>Delete Task</h4>
+    <p id="confirmText">Are you sure you want to delete this task?</p>
+    <div class="confirm-actions">
+      <button class="btn" onclick="cancelDelete()">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmDeleteTask()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightboxImg" src="" alt="Screenshot">
+</div>
+
+<script>
+let state = { tasks: [], agentStatus: { state: 'idle' }, history: [], config: {}, stats: {}, maestroFlows: [] };
+let ws = null;
+let simulators = [];
+let isRecording = false;
+let pendingDeleteId = null;
+
+// Test flow descriptions for better UX
+const FLOW_DESCRIPTIONS = {
+  'explore-all-screens': 'Visit every screen in the app, take screenshots along the way',
+  'navigation-integrity': 'Verify back buttons return to the correct parent screen',
+  'data-persistence': 'Check that data saves correctly and persists after app restart',
+  'error-hunting': 'Deliberately trigger edge cases like rapid taps and empty inputs',
+  'back-navigation-audit': 'Systematically test back button on every single screen',
+  'navigation-back-button': 'Verify back button fix for nested screen navigation bug',
+  'onboarding-complete': 'Run through the full onboarding flow end-to-end',
+  'profile-save': 'Edit profile fields and verify they save to Convex correctly',
+  'settings-persistence': 'Change settings, restart app, verify they persisted',
+  'study-room-invite': 'Create study room, invite friend, verify invite flow',
+  'quick-smoke-test': 'Fast check that every tab loads without crashing',
+  'full-app-walkthrough': 'Complete walkthrough of every screen with navigation checks',
+  '00-full-app-walkthrough': 'Comprehensive walkthrough of all screens using id selectors',
+  '01-navigation-back-buttons': 'Verify back button behavior across all navigable screens',
+  '02-focus-sessions': 'Test starting, timing, and completing focus sessions',
+  '03-messaging': 'Test messaging UI, conversations, and message sending',
+  '04-study-rooms': 'Test study room creation, joining, and room interactions'
+};
+
+const CATEGORY_ORDER = ['root', 'quick', 'discovery', 'verify', 'generated'];
+const CATEGORY_LABELS = {
+  'root': 'General',
+  'quick': 'Quick Tests',
+  'discovery': 'Discovery',
+  'verify': 'Verification',
+  'generated': 'Generated (from Scan)'
+};
+const CATEGORY_COLORS = {
+  'root': 'var(--accent-blue)',
+  'quick': 'var(--accent-teal)',
+  'discovery': 'var(--accent-purple)',
+  'verify': 'var(--accent-green)',
+  'generated': 'var(--accent-pink)'
+};
+
+// --- WebSocket ---
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(proto + '://' + location.host);
+  ws.onopen = function() { console.log('WS connected'); };
+  ws.onmessage = function(event) {
+    var msg = JSON.parse(event.data);
+    switch (msg.type) {
+      case 'init':
+        state = Object.assign({}, state, msg.data);
+        if (msg.data.scannerRunning) { scannerRunning = true; updateScannerUI(); }
+        renderAll();
+        break;
+      case 'task-update': state.tasks = msg.data; renderKanban(); renderStats(); break;
+      case 'agent-status': state.agentStatus = msg.data; renderAgentStatus(); break;
+      case 'history': state.history.push(msg.data); renderActivity(); break;
+      case 'agent-log': appendLog(msg.data.text); break;
+      case 'maestro-log': appendLog('[MAESTRO] ' + msg.data.text); break;
+      case 'maestro-status':
+        if (msg.data.recording !== undefined) { isRecording = msg.data.running && msg.data.recording; updateRecordingIndicator(); }
+        if (!msg.data.running && msg.data.result) { if (msg.data.result.video) loadVideo(msg.data.result.video.url); loadScreenshots(); }
+        break;
+      case 'screenshot': loadScreenshots(); break;
+      case 'recording-ready': loadVideo(msg.data.url); loadRecordings(); break;
+      case 'simulator-status': refreshSimulators(); break;
+      case 'scanner-status':
+        scannerRunning = msg.data.running;
+        updateScannerUI();
+        break;
+      case 'scanner-log':
+        appendLog('[SCANNER] ' + msg.data.text);
+        break;
+      case 'scanner-progress':
+        updateScannerProgress(msg.data);
+        break;
+      case 'scanner-complete':
+        scannerRunning = false;
+        updateScannerUI();
+        if (msg.data.report) renderDiscoveryReport(msg.data.report);
+        break;
+      case 'flows-updated':
+        refreshState();
+        break;
+    }
+  };
+  ws.onclose = function() { setTimeout(connectWS, 3000); };
+}
+
+async function api(method, path, body) {
+  var opts = { method: method };
+  if (body) { opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(body); }
+  var res = await fetch('/api' + path, opts);
+  return res.json();
+}
+
+async function refreshState() { state = await api('GET', '/state'); renderAll(); }
+
+// --- Render ---
+function renderAll() { renderKanban(); renderStats(); renderAgentStatus(); renderActivity(); renderFlows(); renderConfig(); }
+
+function renderAgentStatus() {
+  var badge = document.getElementById('agentBadge');
+  var text = document.getElementById('agentStateText');
+  var btn = document.getElementById('btnStartAgent');
+  badge.className = 'agent-status-badge ' + state.agentStatus.state;
+  var labels = { idle: 'Idle', running: 'Running', testing: 'Testing', error: 'Error' };
+  text.textContent = labels[state.agentStatus.state] || state.agentStatus.state;
+  if (state.agentStatus.state === 'running' || state.agentStatus.state === 'testing') {
+    btn.textContent = 'Stop Agent'; btn.className = 'btn btn-sm btn-danger';
+  } else {
+    btn.textContent = 'Start Agent'; btn.className = 'btn btn-sm btn-success';
+  }
+}
+
+function renderStats() {
+  var counts = { queued: 0, 'in-progress': 0, review: 0, done: 0, failed: 0 };
+  state.tasks.forEach(function(t) { if (counts[t.status] !== undefined) counts[t.status]++; });
+  document.getElementById('statQueued').textContent = counts.queued;
+  document.getElementById('statInProgress').textContent = counts['in-progress'];
+  document.getElementById('statReview').textContent = counts.review;
+  document.getElementById('statDone').textContent = counts.done;
+  document.getElementById('statFailed').textContent = counts.failed;
+  document.getElementById('statTodayDone').textContent = state.stats && state.stats.todayCompleted || 0;
+  document.getElementById('countQueued').textContent = counts.queued;
+  document.getElementById('countInProgress').textContent = counts['in-progress'];
+  document.getElementById('countReview').textContent = counts.review;
+  document.getElementById('countDone').textContent = counts.done;
+  document.getElementById('countFailed').textContent = counts.failed;
+}
+
+function renderKanban() {
+  var columns = { 'queued': 'colQueued', 'in-progress': 'colInProgress', 'review': 'colReview', 'done': 'colDone', 'failed': 'colFailed' };
+  var nextStatus = { 'queued': 'in-progress', 'in-progress': 'review', 'review': 'done', 'failed': 'queued' };
+  var priorityWeight = { critical: 0, high: 1, medium: 2, low: 3 };
+
+  Object.values(columns).forEach(function(id) { document.getElementById(id).textContent = ''; });
+
+  var sorted = state.tasks.slice().sort(function(a, b) { return (priorityWeight[a.priority] || 2) - (priorityWeight[b.priority] || 2); });
+
+  sorted.forEach(function(task) {
+    var colId = columns[task.status];
+    if (!colId) return;
+
+    var card = document.createElement('div');
+    card.className = 'task-card';
+
+    // Header with title and delete
+    var header = document.createElement('div');
+    header.className = 'task-card-header';
+    var title = document.createElement('div');
+    title.className = 'task-card-title';
+    title.textContent = task.title;
+    var delBtn = document.createElement('button');
+    delBtn.className = 'task-card-delete';
+    delBtn.textContent = '\u00D7';
+    delBtn.title = 'Delete task';
+    delBtn.onclick = function(e) { e.stopPropagation(); promptDeleteTask(task.id, task.title); };
+    header.appendChild(title);
+    header.appendChild(delBtn);
+
+    // Meta
+    var meta = document.createElement('div');
+    meta.className = 'task-card-meta';
+    var priority = document.createElement('span');
+    priority.className = 'task-priority priority-' + task.priority;
+    priority.textContent = task.priority;
+    var source = document.createElement('span');
+    source.className = 'task-source';
+    source.textContent = task.source;
+    meta.appendChild(priority);
+    meta.appendChild(source);
+
+    card.appendChild(header);
+    card.appendChild(meta);
+
+    // Actions
+    if (task.status !== 'done') {
+      var actions = document.createElement('div');
+      actions.className = 'task-actions';
+      if (nextStatus[task.status]) {
+        var moveBtn = document.createElement('button');
+        moveBtn.className = 'btn btn-xs';
+        moveBtn.textContent = nextStatus[task.status];
+        moveBtn.onclick = function(e) { e.stopPropagation(); moveTask(task.id, nextStatus[task.status]); };
+        actions.appendChild(moveBtn);
+      }
+      if (task.status === 'queued') {
+        var agentBtn = document.createElement('button');
+        agentBtn.className = 'btn btn-xs btn-primary';
+        agentBtn.textContent = 'Agent';
+        agentBtn.onclick = function(e) { e.stopPropagation(); runAgentOnTask(task.id); };
+        actions.appendChild(agentBtn);
+      }
+      card.appendChild(actions);
+    }
+
+    document.getElementById(colId).appendChild(card);
+  });
+}
+
+function renderActivity() {
+  var feed = document.getElementById('activityFeed');
+  var items = (state.history || []).slice(-30).reverse();
+  feed.textContent = '';
+  if (items.length === 0) {
+    var empty = document.createElement('div');
+    empty.style.cssText = 'color:var(--text-muted); font-size:12px; text-align:center; padding:40px 0;';
+    empty.textContent = 'No activity yet. Start the agent or run tests.';
+    feed.appendChild(empty);
+    return;
+  }
+  items.forEach(function(h) {
+    var item = document.createElement('div');
+    item.className = 'activity-item ' + (h.type || '');
+    var msg = document.createElement('div');
+    msg.textContent = h.message;
+    var time = document.createElement('div');
+    time.className = 'activity-time';
+    time.textContent = timeAgo(h.timestamp);
+    item.appendChild(msg);
+    item.appendChild(time);
+    feed.appendChild(item);
+  });
+}
+
+function renderFlows() {
+  var container = document.getElementById('testFlowList');
+  container.textContent = '';
+  var flows = state.maestroFlows || [];
+  if (flows.length === 0) {
+    var empty = document.createElement('div');
+    empty.style.cssText = 'color:var(--text-muted); font-size:12px; text-align:center; padding:20px 0;';
+    empty.textContent = 'No Maestro flows found.';
+    container.appendChild(empty);
+    return;
+  }
+
+  // Group by category
+  var groups = {};
+  flows.forEach(function(f) {
+    var cat = f.category || 'other';
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(f);
+  });
+
+  // Render in order
+  var order = CATEGORY_ORDER.concat(Object.keys(groups).filter(function(k) { return CATEGORY_ORDER.indexOf(k) === -1; }));
+  order.forEach(function(cat) {
+    if (!groups[cat]) return;
+    var catDiv = document.createElement('div');
+    catDiv.className = 'test-category';
+
+    var header = document.createElement('div');
+    header.className = 'test-category-header';
+    var label = document.createElement('div');
+    label.className = 'test-category-label';
+    var dot = document.createElement('span');
+    dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:' + (CATEGORY_COLORS[cat] || 'var(--text-muted)');
+    var labelText = document.createElement('span');
+    labelText.textContent = CATEGORY_LABELS[cat] || cat;
+    var badge = document.createElement('span');
+    badge.className = 'test-category-badge';
+    badge.textContent = groups[cat].length;
+    label.appendChild(dot);
+    label.appendChild(labelText);
+    label.appendChild(badge);
+    header.appendChild(label);
+
+    var runCatBtn = document.createElement('button');
+    runCatBtn.className = 'btn btn-xs';
+    runCatBtn.textContent = 'Run All';
+    runCatBtn.onclick = function() { groups[cat].forEach(function(f) { runTest(f.file); }); };
+    header.appendChild(runCatBtn);
+
+    var items = document.createElement('div');
+    items.className = 'test-category-items';
+
+    groups[cat].forEach(function(f) {
+      var item = document.createElement('div');
+      item.className = 'test-flow-item';
+
+      var info = document.createElement('div');
+      info.className = 'test-flow-info';
+      var name = document.createElement('span');
+      name.className = 'test-flow-name';
+      // Clean up display name
+      var cleanName = f.name.replace(/^\[.*?\]\s*/, '');
+      name.textContent = cleanName;
+      info.appendChild(name);
+
+      // Source badge (local = corrected, repo = from app repo)
+      if (f.source === 'local') {
+        var srcBadge = document.createElement('span');
+        srcBadge.style.cssText = 'font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(16,185,129,0.15);color:var(--accent-green);margin-left:6px;';
+        srcBadge.textContent = 'local';
+        name.appendChild(srcBadge);
+      } else if (f.source === 'repo') {
+        var srcBadge = document.createElement('span');
+        srcBadge.style.cssText = 'font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(139,92,246,0.15);color:var(--accent-purple);margin-left:6px;';
+        srcBadge.textContent = 'repo';
+        name.appendChild(srcBadge);
+      }
+
+      // Add description if available
+      var flowKey = f.file.replace(/^.*\//, '').replace(/\.(yaml|yml)$/, '');
+      if (FLOW_DESCRIPTIONS[flowKey]) {
+        var desc = document.createElement('span');
+        desc.className = 'test-flow-desc';
+        desc.textContent = FLOW_DESCRIPTIONS[flowKey];
+        info.appendChild(desc);
+      }
+
+      var btns = document.createElement('div');
+      btns.className = 'test-flow-btns';
+      var recBtn = document.createElement('button');
+      recBtn.className = 'btn btn-xs';
+      recBtn.textContent = 'Rec';
+      recBtn.title = 'Record video';
+      recBtn.onclick = function() { recordTest(f.file); };
+      var runBtn = document.createElement('button');
+      runBtn.className = 'btn btn-xs btn-primary';
+      runBtn.textContent = 'Run';
+      runBtn.onclick = function() { runTest(f.file); };
+      btns.appendChild(recBtn);
+      btns.appendChild(runBtn);
+
+      item.appendChild(info);
+      item.appendChild(btns);
+      items.appendChild(item);
+    });
+
+    catDiv.appendChild(header);
+    catDiv.appendChild(items);
+    container.appendChild(catDiv);
+  });
+}
+
+function renderConfig() {
+  document.getElementById('cfgRepoPath').value = (state.config && state.config.repoPath) || '';
+  document.getElementById('cfgWorktreePath').value = (state.config && state.config.worktreePath) || '';
+  document.getElementById('cfgAppId').value = (state.config && state.config.hikewiseAppId) || '';
+  document.getElementById('cfgAutoTests').value = String(state.config && state.config.autoRunTests !== false);
+}
+
+function appendLog(text) {
+  var viewer = document.getElementById('logViewer');
+  viewer.textContent += text;
+  viewer.scrollTop = viewer.scrollHeight;
+}
+
+// --- Task Actions ---
+async function addTask() {
+  var title = document.getElementById('taskTitle').value.trim();
+  if (!title) return;
+  await api('POST', '/tasks', {
+    title: title, description: document.getElementById('taskDesc').value,
+    priority: document.getElementById('taskPriority').value,
+    status: document.getElementById('taskStatus').value, source: 'manual'
+  });
+  document.getElementById('taskTitle').value = '';
+  document.getElementById('taskDesc').value = '';
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+
+async function moveTask(id, status) { await api('POST', '/tasks/' + id + '/move', { status: status }); }
+
+function promptDeleteTask(id, title) {
+  pendingDeleteId = id;
+  document.getElementById('confirmText').textContent = 'Delete "' + title + '"? This cannot be undone.';
+  document.getElementById('confirmOverlay').classList.add('open');
+}
+
+function cancelDelete() {
+  pendingDeleteId = null;
+  document.getElementById('confirmOverlay').classList.remove('open');
+}
+
+async function confirmDeleteTask() {
+  if (!pendingDeleteId) return;
+  await api('DELETE', '/tasks/' + pendingDeleteId);
+  pendingDeleteId = null;
+  document.getElementById('confirmOverlay').classList.remove('open');
+}
+
+async function toggleAgent() {
+  if (state.agentStatus.state === 'running' || state.agentStatus.state === 'testing') {
+    await api('POST', '/agent/stop');
+  } else { await api('POST', '/agent/start', { mode: 'auto' }); }
+}
+async function runAgentOnTask(taskId) { await api('POST', '/agent/start', { mode: 'specific-task', taskId: taskId }); }
+async function runAllTests() { await api('POST', '/maestro/run', { flow: 'all' }); }
+async function runTest(flowFile) { await api('POST', '/maestro/run', { flow: flowFile }); }
+
+async function saveConfig() {
+  await api('PATCH', '/config', {
+    repoPath: document.getElementById('cfgRepoPath').value,
+    worktreePath: document.getElementById('cfgWorktreePath').value,
+    hikewiseAppId: document.getElementById('cfgAppId').value,
+    autoRunTests: document.getElementById('cfgAutoTests').value === 'true'
+  });
+  alert('Configuration saved!');
+}
+async function loadLogs() {
+  var data = await api('GET', '/agent/logs');
+  document.getElementById('logViewer').textContent = data.content || 'No logs yet.';
+}
+
+// --- UI ---
+function openModal() { document.getElementById('modalOverlay').classList.add('open'); document.getElementById('taskTitle').focus(); }
+function closeModal(e) { if (e.target === e.currentTarget) document.getElementById('modalOverlay').classList.remove('open'); }
+function switchPanel(name) {
+  document.querySelectorAll('.panel-tab').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelectorAll('.panel-content').forEach(function(p) { p.classList.remove('active'); });
+  var tab = document.querySelector('.panel-tab[onclick*="' + name + '"]');
+  var panel = document.getElementById('panel' + name.charAt(0).toUpperCase() + name.slice(1));
+  if (tab) tab.classList.add('active');
+  if (panel) panel.classList.add('active');
+  if (name === 'logs') loadLogs();
+  if (name === 'visual') { refreshSimulators(); loadScreenshots(); loadRecordings(); }
+  if (name === 'discovery') loadLatestReport();
+}
+function escHtml(str) { var d = document.createElement('div'); d.textContent = str || ''; return d.innerHTML; }
+function timeAgo(ts) {
+  if (!ts) return '';
+  var diff = (Date.now() - new Date(ts).getTime()) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+  return new Date(ts).toLocaleDateString();
+}
+
+// --- Simulator ---
+async function refreshSimulators() {
+  try { var data = await api('GET', '/simulator/list'); simulators = data.devices || []; renderSimulators(data); } catch(e) {}
+}
+function renderSimulators(data) {
+  var list = document.getElementById('simDeviceList');
+  var indicator = document.getElementById('simIndicator');
+  var nameEl = document.getElementById('simName');
+  var stateEl = document.getElementById('simState');
+  var devices = data.devices || [];
+  var booted = devices.find(function(d) { return d.isBooted; });
+  if (booted) { indicator.className = 'sim-indicator booted'; nameEl.textContent = booted.name; stateEl.textContent = data.platform.toUpperCase() + ' - Booted'; }
+  else if (devices.length > 0) { indicator.className = 'sim-indicator'; nameEl.textContent = devices.length + ' simulators available'; stateEl.textContent = 'None booted'; }
+  else { indicator.className = 'sim-indicator'; nameEl.textContent = data.error || 'None found'; stateEl.textContent = 'Install Xcode or Android SDK'; }
+  list.textContent = '';
+  // Only show iPhones, limit to 8
+  var iphoneDevices = devices.filter(function(d) { return d.name.indexOf('iPhone') !== -1; });
+  iphoneDevices.slice(0, 8).forEach(function(d) {
+    var item = document.createElement('div');
+    item.className = 'sim-device-item' + (d.isBooted ? ' active' : '');
+    var info = document.createElement('span');
+    info.textContent = d.name + (d.runtime ? ' (' + d.runtime + ')' : '');
+    item.appendChild(info);
+    if (d.isBooted) {
+      var shutBtn = document.createElement('button');
+      shutBtn.className = 'btn btn-xs'; shutBtn.textContent = 'Shutdown';
+      shutBtn.onclick = function(e) { e.stopPropagation(); shutdownSimulator(d.udid); };
+      item.appendChild(shutBtn);
+    } else {
+      var bootBtn = document.createElement('button');
+      bootBtn.className = 'btn btn-xs btn-success'; bootBtn.textContent = 'Boot';
+      bootBtn.onclick = function(e) { e.stopPropagation(); bootSimulator(d.udid, d.name, data.platform); };
+      item.appendChild(bootBtn);
+    }
+    list.appendChild(item);
+  });
+}
+async function bootSimulator(udid, name, platform) { try { await api('POST', '/simulator/boot', { udid: udid, name: name, platform: platform || 'ios' }); setTimeout(refreshSimulators, 3000); } catch(e) {} }
+async function shutdownSimulator(udid) { try { await api('POST', '/simulator/shutdown', { udid: udid }); setTimeout(refreshSimulators, 1000); } catch(e) {} }
+async function checkAppStatus() {
+  var el = document.getElementById('appStatusText');
+  el.textContent = 'Checking...';
+  try {
+    var data = await api('GET', '/simulator/app-status');
+    if (data.installed) { el.textContent = 'Installed (' + data.platform.toUpperCase() + ')'; el.style.color = 'var(--accent-green)'; }
+    else { el.textContent = data.message || 'Not installed'; el.style.color = 'var(--accent-amber)'; }
+  } catch(e) { el.textContent = 'No simulator booted'; el.style.color = 'var(--accent-red)'; }
+}
+
+// --- Screenshots ---
+async function takeScreenshot() { try { var d = await api('POST', '/simulator/screenshot'); if (d.url) { loadScreenshots(); switchPanel('visual'); } } catch(e) {} }
+async function loadScreenshots() { try { var ss = await api('GET', '/screenshots'); renderScreenshots(ss); } catch(e) {} }
+function renderScreenshots(ss) {
+  var gallery = document.getElementById('screenshotGallery');
+  gallery.textContent = '';
+  if (!ss || ss.length === 0) {
+    var empty = document.createElement('div');
+    empty.style.cssText = 'grid-column:1/-1; color:var(--text-muted); font-size:11px; text-align:center; padding:12px;';
+    empty.textContent = 'No screenshots yet.';
+    gallery.appendChild(empty);
+    return;
+  }
+  ss.slice(0, 12).forEach(function(s) {
+    var thumb = document.createElement('div');
+    thumb.className = 'screenshot-thumb';
+    thumb.onclick = function() { openLightbox(s.url); };
+    var img = document.createElement('img'); img.src = s.url; img.alt = 'Screenshot'; img.loading = 'lazy';
+    var time = document.createElement('div'); time.className = 'ss-time'; time.textContent = timeAgo(s.timestamp);
+    thumb.appendChild(img); thumb.appendChild(time); gallery.appendChild(thumb);
+  });
+}
+function openLightbox(url) { document.getElementById('lightboxImg').src = url; document.getElementById('lightbox').classList.add('open'); }
+function closeLightbox() { document.getElementById('lightbox').classList.remove('open'); }
+
+// --- Recordings ---
+async function recordTest(flowFile) { try { await api('POST', '/maestro/record', { flow: flowFile }); isRecording = true; updateRecordingIndicator(); switchPanel('visual'); } catch(e) {} }
+function updateRecordingIndicator() { document.getElementById('recordingBadge').style.display = isRecording ? 'inline-flex' : 'none'; }
+function loadVideo(url) { var p = document.getElementById('videoPlayer'); var ph = document.getElementById('videoPlaceholder'); p.src = url; p.style.display = 'block'; ph.style.display = 'none'; }
+async function loadRecordings() { try { var r = await api('GET', '/recordings'); renderRecordings(r); } catch(e) {} }
+function renderRecordings(recs) {
+  var list = document.getElementById('recordingList');
+  list.textContent = '';
+  if (!recs || recs.length === 0) return;
+  recs.slice(0, 10).forEach(function(r) {
+    var item = document.createElement('div'); item.className = 'recording-item';
+    item.onclick = function() { loadVideo(r.url); };
+    var name = document.createElement('span'); name.className = 'rec-name'; name.textContent = r.file;
+    var meta = document.createElement('span'); meta.className = 'rec-meta'; meta.textContent = (r.size / 1048576).toFixed(1) + 'MB';
+    item.appendChild(name); item.appendChild(meta); list.appendChild(item);
+  });
+}
+
+// --- Keyboard shortcuts ---
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'n' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); openModal(); }
+  if (e.key === 'Escape') { document.getElementById('modalOverlay').classList.remove('open'); cancelDelete(); closeLightbox(); }
+});
+
+// --- Scanner / Discovery ---
+let scannerRunning = false;
+
+async function toggleScanner() {
+  if (scannerRunning) {
+    await api('POST', '/scanner/stop');
+    scannerRunning = false;
+    updateScannerUI();
+  } else {
+    var result = await api('POST', '/scanner/start');
+    if (result.status === 'started') {
+      scannerRunning = true;
+      updateScannerUI();
+      switchPanel('discovery');
+    }
+  }
+}
+
+function updateScannerUI() {
+  var btn = document.getElementById('btnScanApp');
+  var btn2 = document.getElementById('btnScanToggle');
+  var statusText = document.getElementById('scannerStatusText');
+  var progressDiv = document.getElementById('scannerProgress');
+
+  if (scannerRunning) {
+    if (btn) { btn.textContent = 'Stop Scan'; btn.className = 'btn btn-sm btn-danger'; }
+    if (btn2) { btn2.textContent = 'Stop Scan'; btn2.className = 'btn btn-sm btn-danger'; }
+    if (statusText) statusText.textContent = 'Scanning...';
+    if (progressDiv) progressDiv.style.display = 'block';
+  } else {
+    if (btn) { btn.textContent = 'Scan App'; btn.className = 'btn btn-sm btn-purple'; }
+    if (btn2) { btn2.textContent = 'Scan App'; btn2.className = 'btn btn-sm btn-purple'; }
+    if (statusText) statusText.textContent = 'Ready';
+    if (progressDiv) progressDiv.style.display = 'none';
+  }
+}
+
+function updateScannerProgress(data) {
+  var fill = document.getElementById('scannerProgressFill');
+  var text = document.getElementById('scannerProgressText');
+  var progressDiv = document.getElementById('scannerProgress');
+  if (!fill || !text) return;
+
+  progressDiv.style.display = 'block';
+  var pct = data.total > 0 ? Math.round((data.step / data.total) * 100) : 0;
+  fill.style.width = pct + '%';
+  text.textContent = 'Scanning: ' + data.label + ' (' + data.step + '/' + data.total + ')';
+
+  if (data.status === 'complete') {
+    fill.style.width = '100%';
+    text.textContent = 'Scan complete!';
+  }
+}
+
+function renderDiscoveryReport(report) {
+  var container = document.getElementById('discoveryReport');
+  container.textContent = '';
+
+  if (!report) {
+    var empty = document.createElement('div');
+    empty.style.cssText = 'color:var(--text-muted); font-size:12px; text-align:center; padding:30px 0;';
+    empty.textContent = 'No scan results yet. Click "Scan App" to discover screens.';
+    container.appendChild(empty);
+    return;
+  }
+
+  var summary = report.summary || {};
+
+  // Summary stats grid
+  var summaryGrid = document.createElement('div');
+  summaryGrid.className = 'discovery-summary';
+  var statDefs = [
+    { value: summary.totalScreens || 0, label: 'Screens', color: 'var(--accent-blue)' },
+    { value: summary.totalTestIds || 0, label: 'TestIDs', color: 'var(--accent-teal)' },
+    { value: summary.totalTextLabels || 0, label: 'Labels', color: 'var(--accent-purple)' },
+    { value: summary.successfulCaptures || 0, label: 'Captured', color: 'var(--accent-green)' },
+    { value: summary.failedCaptures || 0, label: 'Failed', color: 'var(--accent-red)' },
+    { value: summary.totalElements || 0, label: 'Elements', color: 'var(--text-secondary)' }
+  ];
+  statDefs.forEach(function(sd) {
+    var statDiv = document.createElement('div');
+    statDiv.className = 'discovery-stat';
+    var valDiv = document.createElement('div');
+    valDiv.className = 'discovery-stat-value';
+    valDiv.style.color = sd.color;
+    valDiv.textContent = sd.value;
+    var lblDiv = document.createElement('div');
+    lblDiv.className = 'discovery-stat-label';
+    lblDiv.textContent = sd.label;
+    statDiv.appendChild(valDiv);
+    statDiv.appendChild(lblDiv);
+    summaryGrid.appendChild(statDiv);
+  });
+  container.appendChild(summaryGrid);
+
+  // Generate Tests button
+  var genWrap = document.createElement('div');
+  genWrap.style.marginBottom = '14px';
+  var genBtn = document.createElement('button');
+  genBtn.className = 'btn btn-sm btn-purple';
+  genBtn.style.width = '100%';
+  genBtn.textContent = 'Generate Tests from Scan';
+  genBtn.onclick = generateTestsFromScan;
+  genWrap.appendChild(genBtn);
+  container.appendChild(genWrap);
+
+  // Section header
+  var secHeader = document.createElement('div');
+  secHeader.className = 'panel-section-header';
+  secHeader.textContent = 'Discovered Screens';
+  container.appendChild(secHeader);
+
+  // Screen cards
+  var cardsDiv = document.createElement('div');
+  cardsDiv.className = 'screen-cards';
+  var screens = report.screens || [];
+  screens.forEach(function(s) {
+    var elems = s.elements || {};
+    var elemCount = elems.totalElements || 0;
+    var testIdCount = (elems.testIds || []).length;
+    var textCount = (elems.textElements || []).length;
+
+    var card = document.createElement('div');
+    card.className = 'screen-card';
+    if (s.screenshotUrl) {
+      card.onclick = function() { openLightbox(s.screenshotUrl); };
+    }
+
+    var thumb = document.createElement('div');
+    thumb.className = 'screen-card-thumb';
+    if (s.screenshotUrl) {
+      var img = document.createElement('img');
+      img.src = s.screenshotUrl;
+      img.alt = s.name;
+      img.loading = 'lazy';
+      thumb.appendChild(img);
+    }
+    card.appendChild(thumb);
+
+    var info = document.createElement('div');
+    info.className = 'screen-card-info';
+    var nameEl = document.createElement('div');
+    nameEl.className = 'screen-card-name';
+    nameEl.textContent = s.name;
+    info.appendChild(nameEl);
+    var metaEl = document.createElement('div');
+    metaEl.className = 'screen-card-meta';
+    metaEl.textContent = elemCount + ' elements, ' + testIdCount + ' IDs, ' + textCount + ' labels';
+    info.appendChild(metaEl);
+    card.appendChild(info);
+
+    var statusDot = document.createElement('div');
+    statusDot.className = 'screen-card-status ' + (s.status || 'failed');
+    card.appendChild(statusDot);
+
+    cardsDiv.appendChild(card);
+  });
+  container.appendChild(cardsDiv);
+
+  // Scan metadata footer
+  var footer = document.createElement('div');
+  footer.style.cssText = 'margin-top:10px; font-size:10px; color:var(--text-muted); text-align:center;';
+  footer.textContent = 'Scan: ' + (report.scanId || '') + ' at ' + (report.timestamp || '');
+  container.appendChild(footer);
+}
+
+async function generateTestsFromScan() {
+  try {
+    var result = await api('POST', '/scanner/generate-tests');
+    if (result.flows && result.flows.length > 0) {
+      var stateData = await api('GET', '/state');
+      state.maestroFlows = stateData.maestroFlows;
+      renderFlows();
+      alert('Generated ' + result.flows.length + ' test flows! Check the Tests panel.');
+    } else {
+      alert('No flows generated. Run a scan first.');
+    }
+  } catch(e) {
+    alert('Error generating tests: ' + (e.message || 'unknown'));
+  }
+}
+
+async function loadLatestReport() {
+  try {
+    var report = await api('GET', '/scanner/report');
+    if (report) renderDiscoveryReport(report);
+  } catch(e) {}
+}
+
+// --- Init ---
+connectWS();
+refreshState();
+</script>
+</body>
+</html>

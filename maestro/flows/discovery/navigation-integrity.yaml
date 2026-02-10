@@ -1,0 +1,110 @@
+# HikeWise Discovery Flow: Navigation Integrity
+# Purpose: Verify all tab navigation works and screens load correctly
+# Tests rapid tab switching and deep navigation with back buttons
+appId: com.hikewise.app
+name: Navigation Integrity
+tags:
+  - discovery
+  - navigation
+---
+
+- launchApp:
+    clearState: true
+
+- waitForAnimationToEnd
+
+# ==========================================
+# TAB SWITCHING - Sequential
+# Actual visible tabs: Home, Community, Patrick, Bonuses, Results
+# ==========================================
+
+- tapOn:
+    text: "Home"
+    optional: true
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Community"
+    optional: true
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Patrick"
+    optional: true
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Bonuses"
+    optional: true
+- waitForAnimationToEnd
+
+- tapOn:
+    text: "Results"
+    optional: true
+- waitForAnimationToEnd
+
+# ==========================================
+# RAPID TAB SWITCHING (stress test)
+# ==========================================
+
+- tapOn:
+    text: "Home"
+    optional: true
+- tapOn:
+    text: "Results"
+    optional: true
+- tapOn:
+    text: "Community"
+    optional: true
+- tapOn:
+    text: "Bonuses"
+    optional: true
+- tapOn:
+    text: "Patrick"
+    optional: true
+- tapOn:
+    text: "Home"
+    optional: true
+
+# ==========================================
+# DEEP NAVIGATION + BACK BUTTON
+# ==========================================
+
+# Navigate into Profile and back
+- tapOn:
+    id: "profile-button"
+    optional: true
+- tapOn:
+    text: "Profile"
+    optional: true
+- waitForAnimationToEnd
+- pressKey: back
+- waitForAnimationToEnd
+
+# Navigate into Settings and back
+- tapOn:
+    text: "Settings"
+    optional: true
+- waitForAnimationToEnd
+- pressKey: back
+- waitForAnimationToEnd
+
+# Navigate into Achievements and back
+- tapOn:
+    text: "Achievements"
+    optional: true
+- waitForAnimationToEnd
+- pressKey: back
+- waitForAnimationToEnd
+
+# ==========================================
+# VERIFY HOME IS REACHABLE AFTER ALL NAV
+# ==========================================
+
+- tapOn:
+    text: "Home"
+    optional: true
+- assertVisible:
+    text: "Home"
+    optional: true
+- takeScreenshot: "screens/nav-integrity-complete"

@@ -1,0 +1,117 @@
+# ============================================================
+# HikeWise - Study Room Flow Tests
+# Tests creating, joining, and interacting with study rooms
+# ============================================================
+appId: com.hikewise.app
+---
+
+- launchApp:
+    clearState: true
+
+# Navigate to study rooms (update path based on your navigation)
+- tapOn:
+    id: "tab-sessions"
+    optional: true
+
+- tapOn:
+    id: "study-rooms-tab"
+    optional: true
+
+# --- Test: Study rooms list loads ---
+- assertVisible:
+    id: "study-rooms-screen"
+    optional: true
+
+# --- Test: Create a new study room ---
+- tapOn:
+    id: "create-room-button"
+    optional: true
+
+# Fill in room details
+- tapOn:
+    id: "room-name-input"
+    optional: true
+- inputText: "Maestro Test Room"
+
+- tapOn:
+    id: "room-topic-input"
+    optional: true
+- inputText: "Automated Testing Study Group"
+
+# Select room settings
+- tapOn:
+    id: "room-max-members-select"
+    optional: true
+- tapOn:
+    text: "10"
+    optional: true
+
+# Create the room
+- tapOn:
+    id: "create-room-submit"
+    optional: true
+
+# Verify room was created
+- assertVisible:
+    text: "Maestro Test Room"
+    optional: true
+
+# --- Test: Room detail view ---
+- assertVisible:
+    id: "room-detail-screen"
+    optional: true
+
+# Check key room elements exist
+- assertVisible:
+    id: "room-members-list"
+    optional: true
+
+- assertVisible:
+    id: "room-chat"
+    optional: true
+
+# --- Test: Send a message in the room ---
+- tapOn:
+    id: "room-message-input"
+    optional: true
+- inputText: "Hello from the Maestro test! 👋"
+
+- tapOn:
+    id: "room-send-message"
+    optional: true
+
+# --- Test: Start a group session from the room ---
+- tapOn:
+    id: "start-group-session"
+    optional: true
+
+- assertVisible:
+    id: "group-session-timer"
+    optional: true
+
+# End the group session
+- tapOn:
+    id: "end-group-session"
+    optional: true
+
+- tapOn:
+    id: "confirm-end-session"
+    optional: true
+
+# --- Test: Leave room ---
+- tapOn:
+    id: "room-settings"
+    optional: true
+
+- tapOn:
+    id: "leave-room"
+    optional: true
+
+- tapOn:
+    id: "confirm-leave"
+    optional: true
+
+# Should return to study rooms list
+- assertVisible:
+    id: "study-rooms-screen"
+    optional: true

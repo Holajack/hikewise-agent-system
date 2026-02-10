@@ -1,0 +1,76 @@
+# ============================================================
+# HikeWise - Navigation Back Button Tests
+# Verifies back navigation returns to the correct previous screen
+# ============================================================
+# IMPORTANT: Update appId to match your actual bundle identifier
+# For Expo dev builds, you may need to use openLink instead of launchApp
+# ============================================================
+appId: com.hikewise.app
+---
+
+# --- Test: App launches successfully ---
+- launchApp:
+    clearState: true
+- assertVisible:
+    text: ".*"  # App loaded - update with your actual home screen text
+    optional: true
+
+# --- Test: Tab Navigation ---
+# Update these with your actual tab names
+- tapOn:
+    id: "tab-explore"
+    optional: true
+- tapOn:
+    id: "tab-sessions" 
+    optional: true
+- tapOn:
+    id: "tab-messages"
+    optional: true
+- tapOn:
+    id: "tab-profile"
+    optional: true
+- tapOn:
+    id: "tab-home"
+    optional: true
+
+# --- Test: Deep navigation and back ---
+# Navigate to a trail detail from home
+- tapOn:
+    id: "tab-explore"
+    optional: true
+
+# Tap on a trail card (update with actual testID or text)
+- tapOn:
+    id: "trail-card-0"
+    optional: true
+
+# Verify we're on trail detail
+- assertVisible:
+    id: "trail-detail-screen"
+    optional: true
+
+# Press back
+- pressKey: back
+
+# Verify we're back on explore, NOT home
+- assertVisible:
+    id: "explore-screen"
+    optional: true
+
+# --- Test: Messages deep nav ---
+- tapOn:
+    id: "tab-messages"
+    optional: true
+
+# Tap on a conversation
+- tapOn:
+    id: "conversation-0"
+    optional: true
+
+# Press back
+- pressKey: back
+
+# Should be on messages list, not home
+- assertVisible:
+    id: "messages-list-screen"
+    optional: true

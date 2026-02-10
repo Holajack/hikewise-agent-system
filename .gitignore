@@ -1,0 +1,11 @@
+node_modules/
+.DS_Store
+data/tasks.json
+data/agent-status.json
+data/history.json
+data/screenshots/
+data/recordings/
+data/discovery/
+agent/logs/
+maestro/results/
+*.log

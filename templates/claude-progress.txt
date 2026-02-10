@@ -1,0 +1,39 @@
+# HikeWise Agent Progress Log
+
+## Current Sprint Tasks
+- [ ] Add testID props to all interactive elements in main screens (Home, Community, Bonuses, Results)
+- [ ] Fix back navigation: nested drawer screens should return to parent, not Landing
+- [ ] Verify Clerk auth flow: Landing → Login → Onboarding (new user) → Main
+- [ ] Test focus session timer: start, pause, resume, end, session report flow
+- [ ] Verify Nora AI assistant screen loads and accepts input
+- [ ] Test Community screen messaging and study room creation
+- [ ] Verify Settings sub-screens (Sound, Theme, AI, Notifications) all render
+- [ ] Test Profile sub-screens (Personal Info, Education, Location, Privacy, Preferences)
+- [ ] Verify Leaderboard displays correctly with data
+- [ ] Test BrainMapping screen (Three.js lazy load) renders without URL error
+- [ ] Verify Subscription/ProTrekker screens render premium UI correctly
+
+## In Progress
+(None - waiting for agent to start)
+
+## Completed
+(None yet)
+
+## Blocked / Needs Review
+(None)
+
+## Discovered Issues
+(Agent will document issues found during testing here)
+
+## Agent Notes
+- Working branch: agent-work (git worktree)
+- All changes committed locally - human review required before merge
+- Maestro test flows in maestro/flows/ directory (discovery/ and verify/)
+- Existing Python test runner: execution/maestro_test_runner.py
+- App uses Clerk auth + Convex backend (migrating from Supabase)
+- Bottom tabs: Home, Community, Patrick, Bonuses, Results
+- Drawer: right-side only, swipe disabled
+- Run `maestro test maestro/flows/verify/` to verify changes
+- Focus on navigation and core user flows first
+- Bundle ID: com.hikewise.app
+- GitHub: Holajack/thetriage

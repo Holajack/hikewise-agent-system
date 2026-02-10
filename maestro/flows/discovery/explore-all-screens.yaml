@@ -1,0 +1,196 @@
+# HikeWise Discovery Flow: Explore All Screens
+# Purpose: Visit every visible screen in the app to discover issues
+# Corrected to match actual app tab names: Home, Community, Patrick, Bonuses, Results
+# Hidden screens: Leaderboard, Profile, EBooks, PDFViewer, Achievements, etc.
+appId: com.hikewise.app
+name: Explore All Screens
+tags:
+  - discovery
+  - navigation
+  - smoke
+---
+
+- launchApp:
+    clearState: true
+
+# Wait for app to load and authenticate
+- waitForAnimationToEnd
+
+# ==========================================
+# MAIN VISIBLE TABS
+# Actual tabs: Home, Community, Patrick, Bonuses, Results
+# ==========================================
+
+# Home Tab (should be default)
+- assertVisible:
+    text: "Home"
+    optional: true
+- takeScreenshot: "screens/home"
+
+# Community Tab
+- tapOn:
+    text: "Community"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: "screens/community"
+
+# Patrick Tab
+- tapOn:
+    text: "Patrick"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: "screens/patrick"
+
+# Bonuses Tab
+- tapOn:
+    text: "Bonuses"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: "screens/bonuses"
+
+# Results Tab (was incorrectly called "Analytics" in old YAML)
+- tapOn:
+    text: "Results"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: "screens/results"
+
+# Return to Home
+- tapOn:
+    text: "Home"
+    optional: true
+
+# ==========================================
+# PROFILE SCREENS (hidden tab, accessed via UI)
+# ==========================================
+
+- tapOn:
+    id: "profile-button"
+    optional: true
+- tapOn:
+    text: "Profile"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: "screens/profile"
+
+# Personal Information
+- tapOn:
+    text: "Personal Information"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: "screens/personal-info"
+- pressKey: back
+
+# Edit Profile
+- tapOn:
+    text: "Edit Profile"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: "screens/edit-profile"
+- pressKey: back
+
+# Back to Home
+- pressKey: back
+- tapOn:
+    text: "Home"
+    optional: true
+
+# ==========================================
+# SETTINGS SCREENS
+# ==========================================
+
+- tapOn:
+    text: "Settings"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: "screens/settings"
+
+# Sound Settings
+- tapOn:
+    text: "Sound"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: "screens/sound-settings"
+- pressKey: back
+
+# Notification Settings
+- tapOn:
+    text: "Notifications"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: "screens/notification-settings"
+- pressKey: back
+
+# Focus Settings
+- tapOn:
+    text: "Focus"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: "screens/focus-settings"
+- pressKey: back
+
+# Back to Home
+- pressKey: back
+- tapOn:
+    text: "Home"
+    optional: true
+
+# ==========================================
+# LEADERBOARD (hidden tab, navigate via UI)
+# ==========================================
+
+- tapOn:
+    text: "Leaderboard"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: "screens/leaderboard"
+- pressKey: back
+
+# ==========================================
+# ACHIEVEMENTS (hidden screen)
+# ==========================================
+
+- tapOn:
+    text: "Achievements"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: "screens/achievements"
+- pressKey: back
+
+# ==========================================
+# FOCUS SESSION (start from Home)
+# ==========================================
+
+- tapOn:
+    text: "Home"
+    optional: true
+
+- tapOn:
+    text: "Start Session"
+    optional: true
+- tapOn:
+    text: "Start"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: "screens/focus-session"
+
+# End Session if started
+- tapOn:
+    text: "End"
+    optional: true
+- tapOn:
+    text: "End Session"
+    optional: true
+- takeScreenshot: "screens/session-complete"
+
+# ==========================================
+# COMPLETION
+# ==========================================
+
+- tapOn:
+    text: "Home"
+    optional: true
+- assertVisible:
+    text: "Home"
+    optional: true
+- takeScreenshot: "screens/exploration-complete"

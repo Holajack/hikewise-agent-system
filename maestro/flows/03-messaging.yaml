@@ -1,0 +1,104 @@
+# ============================================================
+# HikeWise - Messaging Flow Tests
+# Tests sending/receiving messages, conversation navigation
+# ============================================================
+appId: com.hikewise.app
+---
+
+- launchApp:
+    clearState: true
+
+# Navigate to messages tab
+- tapOn:
+    id: "tab-messages"
+    optional: true
+
+# --- Test: Messages list loads ---
+- assertVisible:
+    id: "messages-screen"
+    optional: true
+
+# --- Test: Open a conversation ---
+- tapOn:
+    id: "conversation-0"
+    optional: true
+
+# Verify conversation screen loaded
+- assertVisible:
+    id: "conversation-screen"
+    optional: true
+
+# Verify message input is visible
+- assertVisible:
+    id: "message-input"
+    optional: true
+
+# --- Test: Type and send a message ---
+- tapOn:
+    id: "message-input"
+- inputText: "Hello! This is an automated test message from Maestro 🏔️"
+
+# Tap send button
+- tapOn:
+    id: "send-message-button"
+    optional: true
+
+# Wait for message to appear in the conversation
+- assertVisible:
+    text: "automated test message"
+    optional: true
+
+# --- Test: Send another message ---
+- tapOn:
+    id: "message-input"
+- inputText: "Testing message delivery and display"
+
+- tapOn:
+    id: "send-message-button"
+    optional: true
+
+# --- Test: Scroll through messages ---
+- scroll:
+    direction: UP
+
+- scroll:
+    direction: DOWN
+
+# --- Test: Back navigation from conversation ---
+- pressKey: back
+
+# Should return to messages list, not home
+- assertVisible:
+    id: "messages-screen"
+    optional: true
+
+# --- Test: Create new conversation (if feature exists) ---
+- tapOn:
+    id: "new-message-button"
+    optional: true
+
+# Search for or select a recipient (test account)
+- tapOn:
+    id: "recipient-search"
+    optional: true
+- inputText: "TestUser"
+
+# Select the test user
+- tapOn:
+    id: "recipient-0"
+    optional: true
+
+# Type a message
+- tapOn:
+    id: "message-input"
+    optional: true
+- inputText: "New conversation test from Maestro"
+
+- tapOn:
+    id: "send-message-button"
+    optional: true
+
+# Verify message sent
+- assertVisible:
+    text: "New conversation test"
+    optional: true

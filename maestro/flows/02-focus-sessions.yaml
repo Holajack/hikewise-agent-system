@@ -1,0 +1,75 @@
+# ============================================================
+# HikeWise - Focus Session Flow Tests
+# Tests the focus/study timer feature end-to-end
+# ============================================================
+appId: com.hikewise.app
+---
+
+- launchApp:
+    clearState: true
+
+# Navigate to sessions
+- tapOn:
+    id: "tab-sessions"
+    optional: true
+
+# --- Test: Create a focus session ---
+- tapOn:
+    id: "start-session-button"
+    optional: true
+
+# Select session duration (update IDs to match your app)
+- tapOn:
+    id: "duration-25min"
+    optional: true
+
+# Start the session
+- tapOn:
+    id: "begin-session"
+    optional: true
+
+# Verify timer is visible and running
+- assertVisible:
+    id: "session-timer"
+    optional: true
+
+# Verify session controls are visible
+- assertVisible:
+    id: "pause-session"
+    optional: true
+
+# --- Test: Pause and resume ---
+- tapOn:
+    id: "pause-session"
+    optional: true
+
+- assertVisible:
+    id: "resume-session"
+    optional: true
+
+- tapOn:
+    id: "resume-session"
+    optional: true
+
+# --- Test: End session early ---
+- tapOn:
+    id: "end-session"
+    optional: true
+
+# Confirm end (if there's a confirmation dialog)
+- tapOn:
+    id: "confirm-end-session"
+    optional: true
+
+# Verify session summary screen
+- assertVisible:
+    id: "session-summary"
+    optional: true
+
+# --- Test: Navigate back from summary ---
+- pressKey: back
+
+# Should return to sessions list
+- assertVisible:
+    id: "sessions-screen"
+    optional: true

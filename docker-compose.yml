@@ -1,0 +1,48 @@
+# ============================================================
+# HikeWise Agent System - Docker Compose
+# Runs the dashboard in a container, accessible via Tailscale
+# ============================================================
+
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hikewise-dashboard
+    restart: unless-stopped
+    ports:
+      - "3847:3847"
+    volumes:
+      # Persistent data (tasks, history, config)
+      - ./data:/app/data
+      # Agent logs
+      - ./agent/logs:/app/agent/logs
+      # Maestro flows and results
+      - ./maestro:/app/maestro
+      # Templates
+      - ./templates:/app/templates
+      # Mount the hikewise worktree (update this path!)
+      # Uncomment and update when ready:
+      # - ${HOME}/hikewise-agent:/worktree:ro
+    environment:
+      - NODE_ENV=production
+      - PORT=3847
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3847/api/stats"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - hikewise-net
+
+  # Optional: Watchtower for auto-updates
+  # watchtower:
+  #   image: containrrr/watchtower
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   command: --interval 86400 hikewise-dashboard
+
+networks:
+  hikewise-net:
+    driver: bridge
+    internal: false  # Needs external access for Tailscale

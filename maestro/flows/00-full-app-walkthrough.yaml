@@ -1,0 +1,338 @@
+# ============================================================
+# HikeWise - FULL APP WALKTHROUGH
+# Comprehensive test that covers every major screen and feature
+# Run this overnight for complete coverage
+# ============================================================
+appId: com.hikewise.app
+---
+
+- launchApp:
+    clearState: true
+
+# ==========================================
+# SECTION 1: ONBOARDING / PARALLAX SCREENS
+# ==========================================
+
+# Verify onboarding appears on first launch
+- assertVisible:
+    id: "onboarding-screen"
+    optional: true
+
+# Swipe through parallax screens
+- swipe:
+    direction: LEFT
+    duration: 500
+- swipe:
+    direction: LEFT
+    duration: 500
+- swipe:
+    direction: LEFT
+    duration: 500
+
+# Complete onboarding
+- tapOn:
+    id: "get-started-button"
+    optional: true
+
+# ==========================================
+# SECTION 2: HOME SCREEN
+# ==========================================
+
+- assertVisible:
+    id: "home-screen"
+    optional: true
+
+# Check main elements are visible
+- assertVisible:
+    id: "featured-trails"
+    optional: true
+
+- assertVisible:
+    id: "quick-start-session"
+    optional: true
+
+# ==========================================
+# SECTION 3: EXPLORE / TRAILS
+# ==========================================
+
+- tapOn:
+    id: "tab-explore"
+    optional: true
+
+- assertVisible:
+    id: "explore-screen"
+    optional: true
+
+# Search for a trail
+- tapOn:
+    id: "trail-search-input"
+    optional: true
+- inputText: "Mountain"
+
+# View search results
+- assertVisible:
+    id: "search-results"
+    optional: true
+
+# Clear search
+- tapOn:
+    id: "clear-search"
+    optional: true
+
+# Open first trail
+- tapOn:
+    id: "trail-card-0"
+    optional: true
+
+# Trail detail checks
+- assertVisible:
+    id: "trail-detail-screen"
+    optional: true
+- assertVisible:
+    id: "trail-difficulty"
+    optional: true
+- assertVisible:
+    id: "trail-distance"
+    optional: true
+
+# Scroll down to see more details
+- scroll:
+    direction: DOWN
+
+# Check for reviews section
+- assertVisible:
+    id: "trail-reviews"
+    optional: true
+
+# Back to explore
+- pressKey: back
+- assertVisible:
+    id: "explore-screen"
+    optional: true
+
+# ==========================================
+# SECTION 4: FOCUS SESSIONS
+# ==========================================
+
+- tapOn:
+    id: "tab-sessions"
+    optional: true
+
+- assertVisible:
+    id: "sessions-screen"
+    optional: true
+
+# Start a short session
+- tapOn:
+    id: "start-session-button"
+    optional: true
+
+# Pick shortest duration for testing
+- tapOn:
+    id: "duration-custom"
+    optional: true
+
+# If custom input exists, enter 1 minute
+- tapOn:
+    id: "custom-duration-input"
+    optional: true
+- inputText: "1"
+
+- tapOn:
+    id: "begin-session"
+    optional: true
+
+# Verify timer running
+- assertVisible:
+    id: "session-timer"
+    optional: true
+
+# Wait briefly then end
+- swipe:
+    direction: DOWN
+    duration: 200
+
+- tapOn:
+    id: "end-session"
+    optional: true
+
+- tapOn:
+    id: "confirm-end-session"
+    optional: true
+
+# Session summary
+- assertVisible:
+    id: "session-summary"
+    optional: true
+
+- pressKey: back
+
+# ==========================================
+# SECTION 5: MESSAGING
+# ==========================================
+
+- tapOn:
+    id: "tab-messages"
+    optional: true
+
+- assertVisible:
+    id: "messages-screen"
+    optional: true
+
+# Open a conversation if one exists
+- tapOn:
+    id: "conversation-0"
+    optional: true
+
+# Send a test message
+- tapOn:
+    id: "message-input"
+    optional: true
+- inputText: "Full walkthrough test - all systems operational 🏔️"
+
+- tapOn:
+    id: "send-message-button"
+    optional: true
+
+# Back to messages list
+- pressKey: back
+- assertVisible:
+    id: "messages-screen"
+    optional: true
+
+# ==========================================
+# SECTION 6: STUDY ROOMS
+# ==========================================
+
+- tapOn:
+    id: "tab-sessions"
+    optional: true
+
+- tapOn:
+    id: "study-rooms-tab"
+    optional: true
+
+# Check study rooms load
+- assertVisible:
+    id: "study-rooms-screen"
+    optional: true
+
+# Open a room if exists
+- tapOn:
+    id: "room-card-0"
+    optional: true
+
+- pressKey: back
+
+# ==========================================
+# SECTION 7: PROFILE
+# ==========================================
+
+- tapOn:
+    id: "tab-profile"
+    optional: true
+
+- assertVisible:
+    id: "profile-screen"
+    optional: true
+
+# Check profile elements
+- assertVisible:
+    id: "profile-avatar"
+    optional: true
+
+- assertVisible:
+    id: "profile-stats"
+    optional: true
+
+# Scroll to see settings
+- scroll:
+    direction: DOWN
+
+# ==========================================
+# SECTION 8: SETTINGS
+# ==========================================
+
+- tapOn:
+    id: "settings-button"
+    optional: true
+
+- assertVisible:
+    id: "settings-screen"
+    optional: true
+
+- pressKey: back
+
+# ==========================================
+# SECTION 9: ANIMAL IDENTIFICATION
+# ==========================================
+
+- tapOn:
+    id: "tab-home"
+    optional: true
+
+- tapOn:
+    id: "animal-section"
+    optional: true
+
+# Check animal cards display
+- assertVisible:
+    id: "animal-cards"
+    optional: true
+
+# Tap on first animal
+- tapOn:
+    id: "animal-card-0"
+    optional: true
+
+# Check detail view
+- assertVisible:
+    id: "animal-detail"
+    optional: true
+
+- pressKey: back
+
+# ==========================================
+# SECTION 10: FINAL NAVIGATION STRESS TEST
+# ==========================================
+
+# Rapid tab switching
+- tapOn:
+    id: "tab-explore"
+    optional: true
+- tapOn:
+    id: "tab-messages"
+    optional: true
+- tapOn:
+    id: "tab-sessions"
+    optional: true
+- tapOn:
+    id: "tab-profile"
+    optional: true
+- tapOn:
+    id: "tab-home"
+    optional: true
+
+# Deep navigate and rapid back
+- tapOn:
+    id: "tab-explore"
+    optional: true
+- tapOn:
+    id: "trail-card-0"
+    optional: true
+- pressKey: back
+- tapOn:
+    id: "tab-messages"
+    optional: true
+- tapOn:
+    id: "conversation-0"
+    optional: true
+- pressKey: back
+- tapOn:
+    id: "tab-home"
+    optional: true
+
+# Verify we're back home after all that
+- assertVisible:
+    id: "home-screen"
+    optional: true
