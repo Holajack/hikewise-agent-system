@@ -599,6 +599,10 @@
       <div class="config-section"><h4>Device</h4>
         <div class="form-group"><label>Device Mode</label><select id="cfgDeviceMode"><option value="auto">Auto (physical first, then simulator)</option><option value="physical">Physical iPhone only</option><option value="simulator">Simulator only</option></select></div>
       </div>
+      <div class="config-section"><h4>App Mode</h4>
+        <div class="form-group"><label>How is the app running?</label><select id="cfgAppMode"><option value="expo-go">Expo Go (scan QR code)</option><option value="development-build">Development Build (standalone)</option></select></div>
+        <div class="form-group"><label>Expo Dev Server URL (auto-detected if blank)</label><input id="cfgExpoUrl" placeholder="exp://192.168.1.x:8081"></div>
+      </div>
       <div class="config-section"><h4>Agent Settings</h4>
         <div class="form-group"><label>Auto-create tasks from failed tests</label><select id="cfgAutoTests"><option value="true">Yes</option><option value="false">No</option></select></div>
       </div>
@@ -984,6 +988,8 @@ function renderConfig() {
   document.getElementById('cfgWorktreePath').value = (state.config && state.config.worktreePath) || '';
   document.getElementById('cfgAppId').value = (state.config && state.config.hikewiseAppId) || '';
   document.getElementById('cfgDeviceMode').value = (state.config && state.config.deviceMode) || 'auto';
+  document.getElementById('cfgAppMode').value = (state.config && state.config.appMode) || 'expo-go';
+  document.getElementById('cfgExpoUrl').value = (state.config && state.config.expoDevUrl) || '';
   document.getElementById('cfgAutoTests').value = String(state.config && state.config.autoRunTests !== false);
 }
 
@@ -1042,6 +1048,8 @@ async function saveConfig() {
     worktreePath: document.getElementById('cfgWorktreePath').value,
     hikewiseAppId: document.getElementById('cfgAppId').value,
     deviceMode: document.getElementById('cfgDeviceMode').value,
+    appMode: document.getElementById('cfgAppMode').value,
+    expoDevUrl: document.getElementById('cfgExpoUrl').value,
     autoRunTests: document.getElementById('cfgAutoTests').value === 'true'
   });
   alert('Configuration saved!');
@@ -1143,15 +1151,26 @@ async function checkAppStatus() {
   el.textContent = 'Checking...';
   try {
     var data = await api('GET', '/simulator/app-status');
-    if (data.installed) {
-      var deviceLabel = data.deviceType === 'physical' ? data.deviceName || 'Physical' : 'Simulator';
-      el.textContent = 'Installed on ' + deviceLabel;
+    if (!data.connected) {
+      el.textContent = data.message || 'No device connected';
+      el.style.color = 'var(--accent-red)';
+    } else if (data.appMode === 'expo-go') {
+      el.textContent = data.deviceName + ' connected. ' + (data.hint || 'Use Expo Go to load app.');
+      el.style.color = 'var(--accent-teal)';
+      // Also check if Expo dev server is running
+      var expo = await api('GET', '/expo/detect');
+      if (expo.running) {
+        el.textContent = data.deviceName + ' ready. Expo at ' + expo.url;
+        el.style.color = 'var(--accent-green)';
+      }
+    } else if (data.installed) {
+      el.textContent = data.message || 'App installed';
       el.style.color = 'var(--accent-green)';
     } else {
-      el.textContent = data.message || 'Not installed';
+      el.textContent = data.message || 'App not installed';
       el.style.color = 'var(--accent-amber)';
     }
-  } catch(e) { el.textContent = 'No device connected'; el.style.color = 'var(--accent-red)'; }
+  } catch(e) { el.textContent = 'Error checking status'; el.style.color = 'var(--accent-red)'; }
 }
 
 // --- Screenshots ---

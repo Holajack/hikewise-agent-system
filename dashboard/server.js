@@ -72,7 +72,9 @@ let config = loadJSON(CONFIG_FILE, {
   maxAgentRuntime: 3600, // 1 hour per task
   claudeModel: 'opus', // or sonnet
   deviceMode: 'auto', // auto | physical | simulator
-  physicalDeviceId: '' // UDID of physical device (auto-detected if empty)
+  physicalDeviceId: '', // UDID of physical device (auto-detected if empty)
+  appMode: 'expo-go', // expo-go | development-build
+  expoDevUrl: '' // e.g. exp://192.168.1.5:8081 (auto-detected from npx expo start)
 });
 
 app.use(express.json());
@@ -656,51 +658,72 @@ app.post('/api/maestro/record/stop', (req, res) => {
   }
 });
 
-// Check if app is installed on active device
+// Check device connection and app status
 app.get('/api/simulator/app-status', (req, res) => {
   const { execFileSync } = require('child_process');
   const appId = config.hikewiseAppId || 'com.hikewise.app';
+  const appMode = config.appMode || 'expo-go';
   const device = getActiveDevice();
 
   if (!device) {
-    return res.json({ installed: false, appId, message: 'No device connected. Plug in your iPhone or boot a simulator.' });
+    return res.json({
+      connected: false,
+      installed: false,
+      appId,
+      message: 'No device connected. Plug in your iPhone via USB or boot a simulator.'
+    });
   }
 
-  if (device.type === 'physical') {
-    // For physical devices, check via devicectl
-    try {
-      const output = execFileSync('xcrun', [
-        'devicectl', 'device', 'info', 'apps',
-        '--device', device.udid
-      ], { encoding: 'utf8', timeout: 15000 });
-      const found = output.includes(appId);
-      res.json({
-        installed: found,
-        platform: 'ios',
-        deviceType: 'physical',
-        deviceName: device.name,
-        appId,
-        message: found ? `Installed on ${device.name}` : `Not found on ${device.name}. Install via Xcode or TestFlight.`
-      });
-    } catch {
-      res.json({
-        installed: false,
-        platform: 'ios',
-        deviceType: 'physical',
-        deviceName: device.name,
-        appId,
-        message: `Could not check ${device.name}. Ensure it is unlocked and trusted.`
-      });
+  const result = {
+    connected: true,
+    deviceType: device.type,
+    deviceName: device.name,
+    model: device.model,
+    appId,
+    appMode
+  };
+
+  if (appMode === 'expo-go') {
+    // For Expo Go mode, check if Expo Go is installed (not the user's app)
+    const expoGoId = 'host.exp.Exponent';
+
+    if (device.type === 'physical') {
+      // We can't reliably check app installation on physical devices via devicectl
+      // Just report the device is connected and ready
+      result.installed = false;
+      result.expoGoReady = true;
+      result.message = `${device.name} connected via USB. Run "npx expo start" then scan QR code with your iPhone camera.`;
+      result.hint = 'Make sure Expo Go is installed from the App Store.';
+    } else {
+      try {
+        execFileSync('xcrun', ['simctl', 'get_app_container', 'booted', expoGoId], { encoding: 'utf8' });
+        result.installed = true;
+        result.expoGoReady = true;
+        result.message = 'Expo Go installed on simulator. Run "npx expo start" to load your app.';
+      } catch {
+        result.installed = false;
+        result.expoGoReady = false;
+        result.message = 'Expo Go not on simulator. Install it or switch to development build mode.';
+      }
     }
   } else {
-    // Simulator
-    try {
-      const output = execFileSync('xcrun', ['simctl', 'get_app_container', 'booted', appId], { encoding: 'utf8' });
-      res.json({ installed: true, platform: 'ios', deviceType: 'simulator', appId, path: output.trim() });
-    } catch {
-      res.json({ installed: false, appId, deviceType: 'simulator', message: 'Not installed on simulator. Build with: eas build --profile development --platform ios' });
+    // Development build mode — check for actual app bundle
+    if (device.type === 'physical') {
+      result.installed = false;
+      result.message = `${device.name} connected. Install your dev build via Xcode or TestFlight to test.`;
+    } else {
+      try {
+        execFileSync('xcrun', ['simctl', 'get_app_container', 'booted', appId], { encoding: 'utf8' });
+        result.installed = true;
+        result.message = `${appId} installed on simulator.`;
+      } catch {
+        result.installed = false;
+        result.message = `${appId} not installed. Build with: eas build --profile development --platform ios`;
+      }
     }
   }
+
+  res.json(result);
 });
 
 // Install app on simulator (from a local build)
@@ -727,6 +750,44 @@ app.get('/api/device/active', (req, res) => {
   res.json(device || { type: 'none', message: 'No device connected' });
 });
 
+// Detect running Expo dev server
+app.get('/api/expo/detect', (req, res) => {
+  const { execFileSync } = require('child_process');
+  try {
+    // Check if Expo dev server is running by looking for the process
+    const ps = execFileSync('lsof', ['-i', ':8081', '-t'], { encoding: 'utf8', timeout: 5000 }).trim();
+    if (ps) {
+      // Get the local IP for the device to connect
+      const ifconfig = execFileSync('ipconfig', ['getifaddr', 'en0'], { encoding: 'utf8', timeout: 5000 }).trim();
+      const expoUrl = `exp://${ifconfig}:8081`;
+      res.json({ running: true, url: expoUrl, ip: ifconfig, port: 8081, pid: ps.split('\n')[0] });
+    } else {
+      res.json({ running: false, message: 'No Expo dev server detected on port 8081. Run: npx expo start' });
+    }
+  } catch {
+    res.json({ running: false, message: 'Expo dev server not running. Start it with: npx expo start' });
+  }
+});
+
+// Start Expo dev server (if repo path is configured)
+app.post('/api/expo/start', (req, res) => {
+  if (!config.repoPath) {
+    return res.status(400).json({ error: 'Set HikeWise Repo Path in Config first.' });
+  }
+  const expoProcess = spawn('npx', ['expo', 'start', '--port', '8081'], {
+    cwd: config.repoPath,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true
+  });
+  expoProcess.unref();
+  addHistory('expo-started', 'Expo dev server starting...');
+  // Give it a moment then detect
+  setTimeout(() => {
+    broadcast('expo-status', { running: true });
+  }, 3000);
+  res.json({ status: 'starting', message: 'Expo dev server starting. Scan the QR code on your iPhone.' });
+});
+
 // --- Discovery Scanner ---
 
 // Serve discovery screenshots
@@ -750,7 +811,9 @@ app.post('/api/scanner/start', (req, res) => {
     SCAN_ID: currentScanId,
     DEVICE_TYPE: scanDevice ? scanDevice.type : 'simulator',
     DEVICE_UDID: scanDevice ? scanDevice.udid : '',
-    DEVICE_NAME: scanDevice ? scanDevice.name : ''
+    DEVICE_NAME: scanDevice ? scanDevice.name : '',
+    APP_MODE: config.appMode || 'expo-go',
+    EXPO_DEV_URL: config.expoDevUrl || ''
   };
 
   scannerProcess = spawn('bash', [SCANNER_SCRIPT], {

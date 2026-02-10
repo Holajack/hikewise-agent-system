@@ -52,6 +52,19 @@ if [ "$DEVICE_TYPE" = "physical" ] && [ -n "$DEVICE_UDID" ]; then
   MAESTRO_DEVICE_FLAG="--device $DEVICE_UDID"
 fi
 
+# Expo Go support
+APP_MODE="${APP_MODE:-expo-go}"
+EXPO_DEV_URL="${EXPO_DEV_URL:-}"
+
+# Auto-detect Expo dev server URL if not set
+if [ "$APP_MODE" = "expo-go" ] && [ -z "$EXPO_DEV_URL" ]; then
+  LOCAL_IP=$(ipconfig getifaddr en0 2>/dev/null || echo "")
+  if [ -n "$LOCAL_IP" ] && lsof -i :8081 -t > /dev/null 2>&1; then
+    EXPO_DEV_URL="exp://${LOCAL_IP}:8081"
+    log "Auto-detected Expo dev server: $EXPO_DEV_URL"
+  fi
+fi
+
 mkdir -p "$DISCOVERY_DIR" "$SCREENSHOTS_DIR" "$TEMP_DIR"
 
 # --- Logging ---
@@ -86,8 +99,13 @@ write_mini_yaml() {
   local content="$2"
   local yaml_path="$TEMP_DIR/${name}.yaml"
 
+  local effective_app_id="$APP_ID"
+  if [ "$APP_MODE" = "expo-go" ]; then
+    effective_app_id="host.exp.Exponent"
+  fi
+
   cat > "$yaml_path" << EOF
-appId: ${APP_ID}
+appId: ${effective_app_id}
 ---
 $content
 EOF
@@ -97,12 +115,28 @@ EOF
 # --- Write a launch YAML (only used once at start) ---
 write_launch_yaml() {
   local yaml_path="$TEMP_DIR/_launch.yaml"
-  cat > "$yaml_path" << EOF
+
+  if [ "$APP_MODE" = "expo-go" ] && [ -n "$EXPO_DEV_URL" ]; then
+    # Expo Go: open the dev server URL which loads the app inside Expo Go
+    cat > "$yaml_path" << EOF
+appId: host.exp.Exponent
+---
+- launchApp:
+    clearState: false
+- openLink: ${EXPO_DEV_URL}
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: .*
+    timeout: 15000
+EOF
+  else
+    cat > "$yaml_path" << EOF
 appId: ${APP_ID}
 ---
 - launchApp
 - waitForAnimationToEnd
 EOF
+  fi
   echo "$yaml_path"
 }
 
