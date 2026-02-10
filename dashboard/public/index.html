@@ -1152,19 +1152,22 @@ async function checkAppStatus() {
   try {
     var data = await api('GET', '/simulator/app-status');
     if (!data.connected) {
-      el.textContent = data.message || 'No device connected';
+      el.textContent = 'No device connected. Plug in iPhone via USB.';
       el.style.color = 'var(--accent-red)';
-    } else if (data.appMode === 'expo-go') {
-      el.textContent = data.deviceName + ' connected. ' + (data.hint || 'Use Expo Go to load app.');
-      el.style.color = 'var(--accent-teal)';
-      // Also check if Expo dev server is running
+      return;
+    }
+
+    if (data.appMode === 'expo-go') {
       var expo = await api('GET', '/expo/detect');
       if (expo.running) {
-        el.textContent = data.deviceName + ' ready. Expo at ' + expo.url;
+        el.textContent = '\u2713 ' + data.deviceName + ' connected \u00b7 Expo running at ' + expo.url;
         el.style.color = 'var(--accent-green)';
+      } else {
+        el.textContent = '\u2713 ' + data.deviceName + ' connected \u00b7 Expo not running \u2014 run: npx expo start';
+        el.style.color = 'var(--accent-amber)';
       }
     } else if (data.installed) {
-      el.textContent = data.message || 'App installed';
+      el.textContent = '\u2713 ' + (data.message || 'App installed');
       el.style.color = 'var(--accent-green)';
     } else {
       el.textContent = data.message || 'App not installed';

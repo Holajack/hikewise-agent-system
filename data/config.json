@@ -5,5 +5,8 @@
   "autoRunTests": true,
   "maxAgentRuntime": 3600,
   "claudeModel": "opus",
-  "note": "worktreePath and repoPath are the same because running locally on Mac. For Lenovo setup, create a separate worktree: git worktree add ../thetriage-agent -b agent-work"
+  "note": "worktreePath and repoPath are the same because running locally on Mac. For Lenovo setup, create a separate worktree: git worktree add ../thetriage-agent -b agent-work",
+  "deviceMode": "physical",
+  "appMode": "expo-go",
+  "expoDevUrl": "exp://10.2.1.233:8081"
 }

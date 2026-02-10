@@ -58,11 +58,16 @@ EXPO_DEV_URL="${EXPO_DEV_URL:-}"
 
 # Auto-detect Expo dev server URL if not set
 if [ "$APP_MODE" = "expo-go" ] && [ -z "$EXPO_DEV_URL" ]; then
+  # Try local detection as fallback (Expo may be on a remote VM)
   LOCAL_IP=$(ipconfig getifaddr en0 2>/dev/null || echo "")
   if [ -n "$LOCAL_IP" ] && lsof -i :8081 -t > /dev/null 2>&1; then
     EXPO_DEV_URL="exp://${LOCAL_IP}:8081"
-    log "Auto-detected Expo dev server: $EXPO_DEV_URL"
+    log "Auto-detected local Expo dev server: $EXPO_DEV_URL"
+  else
+    log "NOTE: No local Expo server found. If running on a remote VM, set EXPO_DEV_URL in dashboard Config."
   fi
+elif [ "$APP_MODE" = "expo-go" ] && [ -n "$EXPO_DEV_URL" ]; then
+  log "Using configured Expo URL: $EXPO_DEV_URL"
 fi
 
 mkdir -p "$DISCOVERY_DIR" "$SCREENSHOTS_DIR" "$TEMP_DIR"

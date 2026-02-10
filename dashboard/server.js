@@ -753,19 +753,30 @@ app.get('/api/device/active', (req, res) => {
 // Detect running Expo dev server
 app.get('/api/expo/detect', (req, res) => {
   const { execFileSync } = require('child_process');
+
+  // If user has manually configured an Expo URL (e.g. remote VM), trust it
+  if (config.expoDevUrl) {
+    res.json({
+      running: true,
+      url: config.expoDevUrl,
+      source: 'config',
+      message: 'Using configured Expo URL'
+    });
+    return;
+  }
+
+  // Otherwise try to auto-detect a local Expo process
   try {
-    // Check if Expo dev server is running by looking for the process
     const ps = execFileSync('lsof', ['-i', ':8081', '-t'], { encoding: 'utf8', timeout: 5000 }).trim();
     if (ps) {
-      // Get the local IP for the device to connect
       const ifconfig = execFileSync('ipconfig', ['getifaddr', 'en0'], { encoding: 'utf8', timeout: 5000 }).trim();
       const expoUrl = `exp://${ifconfig}:8081`;
-      res.json({ running: true, url: expoUrl, ip: ifconfig, port: 8081, pid: ps.split('\n')[0] });
+      res.json({ running: true, url: expoUrl, ip: ifconfig, port: 8081, source: 'local', pid: ps.split('\n')[0] });
     } else {
-      res.json({ running: false, message: 'No Expo dev server detected on port 8081. Run: npx expo start' });
+      res.json({ running: false, message: 'No Expo dev server detected. Set the URL in Config or run: npx expo start' });
     }
   } catch {
-    res.json({ running: false, message: 'Expo dev server not running. Start it with: npx expo start' });
+    res.json({ running: false, message: 'Expo dev server not detected locally. Set the URL in Config if running remotely.' });
   }
 });
 
