@@ -596,6 +596,9 @@
       <div class="config-section"><h4>App</h4>
         <div class="form-group"><label>App Bundle ID</label><input id="cfgAppId" placeholder="com.hikewise.app"></div>
       </div>
+      <div class="config-section"><h4>Device</h4>
+        <div class="form-group"><label>Device Mode</label><select id="cfgDeviceMode"><option value="auto">Auto (physical first, then simulator)</option><option value="physical">Physical iPhone only</option><option value="simulator">Simulator only</option></select></div>
+      </div>
       <div class="config-section"><h4>Agent Settings</h4>
         <div class="form-group"><label>Auto-create tasks from failed tests</label><select id="cfgAutoTests"><option value="true">Yes</option><option value="false">No</option></select></div>
       </div>
@@ -980,6 +983,7 @@ function renderConfig() {
   document.getElementById('cfgRepoPath').value = (state.config && state.config.repoPath) || '';
   document.getElementById('cfgWorktreePath').value = (state.config && state.config.worktreePath) || '';
   document.getElementById('cfgAppId').value = (state.config && state.config.hikewiseAppId) || '';
+  document.getElementById('cfgDeviceMode').value = (state.config && state.config.deviceMode) || 'auto';
   document.getElementById('cfgAutoTests').value = String(state.config && state.config.autoRunTests !== false);
 }
 
@@ -1037,6 +1041,7 @@ async function saveConfig() {
     repoPath: document.getElementById('cfgRepoPath').value,
     worktreePath: document.getElementById('cfgWorktreePath').value,
     hikewiseAppId: document.getElementById('cfgAppId').value,
+    deviceMode: document.getElementById('cfgDeviceMode').value,
     autoRunTests: document.getElementById('cfgAutoTests').value === 'true'
   });
   alert('Configuration saved!');
@@ -1080,20 +1085,44 @@ function renderSimulators(data) {
   var nameEl = document.getElementById('simName');
   var stateEl = document.getElementById('simState');
   var devices = data.devices || [];
-  var booted = devices.find(function(d) { return d.isBooted; });
-  if (booted) { indicator.className = 'sim-indicator booted'; nameEl.textContent = booted.name; stateEl.textContent = data.platform.toUpperCase() + ' - Booted'; }
-  else if (devices.length > 0) { indicator.className = 'sim-indicator'; nameEl.textContent = devices.length + ' simulators available'; stateEl.textContent = 'None booted'; }
-  else { indicator.className = 'sim-indicator'; nameEl.textContent = data.error || 'None found'; stateEl.textContent = 'Install Xcode or Android SDK'; }
+  var active = data.activeDevice;
+
+  if (active) {
+    indicator.className = 'sim-indicator booted';
+    nameEl.textContent = active.name;
+    stateEl.textContent = (active.type === 'physical' ? 'Physical iPhone' : 'Simulator') + ' - Active';
+  } else if (devices.length > 0) {
+    indicator.className = 'sim-indicator';
+    nameEl.textContent = devices.length + ' devices available';
+    stateEl.textContent = 'None active';
+  } else {
+    indicator.className = 'sim-indicator';
+    nameEl.textContent = data.error || 'No devices found';
+    stateEl.textContent = 'Connect iPhone via USB or boot simulator';
+  }
+
   list.textContent = '';
-  // Only show iPhones, limit to 8
-  var iphoneDevices = devices.filter(function(d) { return d.name.indexOf('iPhone') !== -1; });
-  iphoneDevices.slice(0, 8).forEach(function(d) {
+
+  // Show physical devices first, then simulators (iPhones only), limit to 10
+  var showDevices = devices.filter(function(d) {
+    return d.isPhysical || d.name.indexOf('iPhone') !== -1;
+  });
+  showDevices.slice(0, 10).forEach(function(d) {
     var item = document.createElement('div');
     item.className = 'sim-device-item' + (d.isBooted ? ' active' : '');
     var info = document.createElement('span');
-    info.textContent = d.name + (d.runtime ? ' (' + d.runtime + ')' : '');
+    var label = d.name;
+    if (d.isPhysical) label += ' (USB)';
+    else if (d.runtime) label += ' (' + d.runtime + ')';
+    info.textContent = label;
     item.appendChild(info);
-    if (d.isBooted) {
+
+    if (d.isPhysical) {
+      var tag = document.createElement('span');
+      tag.style.cssText = 'font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(16,185,129,0.15);color:var(--accent-green);font-weight:600;';
+      tag.textContent = 'PHYSICAL';
+      item.appendChild(tag);
+    } else if (d.isBooted) {
       var shutBtn = document.createElement('button');
       shutBtn.className = 'btn btn-xs'; shutBtn.textContent = 'Shutdown';
       shutBtn.onclick = function(e) { e.stopPropagation(); shutdownSimulator(d.udid); };
@@ -1114,9 +1143,15 @@ async function checkAppStatus() {
   el.textContent = 'Checking...';
   try {
     var data = await api('GET', '/simulator/app-status');
-    if (data.installed) { el.textContent = 'Installed (' + data.platform.toUpperCase() + ')'; el.style.color = 'var(--accent-green)'; }
-    else { el.textContent = data.message || 'Not installed'; el.style.color = 'var(--accent-amber)'; }
-  } catch(e) { el.textContent = 'No simulator booted'; el.style.color = 'var(--accent-red)'; }
+    if (data.installed) {
+      var deviceLabel = data.deviceType === 'physical' ? data.deviceName || 'Physical' : 'Simulator';
+      el.textContent = 'Installed on ' + deviceLabel;
+      el.style.color = 'var(--accent-green)';
+    } else {
+      el.textContent = data.message || 'Not installed';
+      el.style.color = 'var(--accent-amber)';
+    }
+  } catch(e) { el.textContent = 'No device connected'; el.style.color = 'var(--accent-red)'; }
 }
 
 // --- Screenshots ---

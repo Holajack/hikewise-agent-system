@@ -26,6 +26,32 @@ TEMP_DIR="$BASE_DIR/maestro/flows/_scanner_temp"
 PARSER="$SCRIPT_DIR/parse-hierarchy.py"
 SCAN_TIMEOUT=20  # seconds per screen capture attempt
 
+# Device detection: physical iPhone vs simulator
+DEVICE_TYPE="${DEVICE_TYPE:-auto}"
+DEVICE_UDID="${DEVICE_UDID:-}"
+DEVICE_NAME="${DEVICE_NAME:-}"
+
+# Auto-detect device if not specified
+if [ "$DEVICE_TYPE" = "auto" ] || [ -z "$DEVICE_UDID" ]; then
+  # Try physical device first
+  PHYSICAL_UDID=$(xcrun devicectl list devices 2>/dev/null | grep -i "available" | head -1 | grep -oE '[A-F0-9-]{36}' || true)
+  if [ -n "$PHYSICAL_UDID" ]; then
+    DEVICE_TYPE="physical"
+    DEVICE_UDID="$PHYSICAL_UDID"
+    DEVICE_NAME=$(xcrun devicectl list devices 2>/dev/null | grep "$PHYSICAL_UDID" | awk '{print $1}' || echo "Physical iPhone")
+  else
+    DEVICE_TYPE="simulator"
+    DEVICE_UDID=""
+    DEVICE_NAME="Simulator"
+  fi
+fi
+
+# Maestro device flag
+MAESTRO_DEVICE_FLAG=""
+if [ "$DEVICE_TYPE" = "physical" ] && [ -n "$DEVICE_UDID" ]; then
+  MAESTRO_DEVICE_FLAG="--device $DEVICE_UDID"
+fi
+
 mkdir -p "$DISCOVERY_DIR" "$SCREENSHOTS_DIR" "$TEMP_DIR"
 
 # --- Logging ---
@@ -85,7 +111,8 @@ capture_hierarchy() {
   local screen_name="$1"
   local output_file="$DISCOVERY_DIR/${SCAN_ID}_hierarchy_${screen_name}.xml"
 
-  if timeout "$SCAN_TIMEOUT" maestro hierarchy > "$output_file" 2>/dev/null; then
+  # shellcheck disable=SC2086
+  if timeout "$SCAN_TIMEOUT" maestro $MAESTRO_DEVICE_FLAG hierarchy > "$output_file" 2>/dev/null; then
     if [ -s "$output_file" ]; then
       echo "$output_file"
       return 0
@@ -94,7 +121,8 @@ capture_hierarchy() {
 
   # Retry once after a short wait
   sleep 2
-  if timeout "$SCAN_TIMEOUT" maestro hierarchy > "$output_file" 2>/dev/null; then
+  # shellcheck disable=SC2086
+  if timeout "$SCAN_TIMEOUT" maestro $MAESTRO_DEVICE_FLAG hierarchy > "$output_file" 2>/dev/null; then
     if [ -s "$output_file" ]; then
       echo "$output_file"
       return 0
@@ -111,9 +139,27 @@ capture_screenshot() {
   local filename="${SCAN_ID}_${screen_name}.png"
   local filepath="$SCREENSHOTS_DIR/$filename"
 
-  if xcrun simctl io booted screenshot "$filepath" 2>/dev/null; then
-    echo "$filename"
-    return 0
+  if [ "$DEVICE_TYPE" = "physical" ] && [ -n "$DEVICE_UDID" ]; then
+    # Physical device: use Maestro takeScreenshot via mini flow
+    local ss_yaml="$TEMP_DIR/_screenshot.yaml"
+    cat > "$ss_yaml" << SSEOF
+appId: ${APP_ID}
+---
+- takeScreenshot: ${filepath}
+SSEOF
+    # shellcheck disable=SC2086
+    if timeout "$SCAN_TIMEOUT" maestro $MAESTRO_DEVICE_FLAG test "$ss_yaml" > /dev/null 2>&1; then
+      if [ -f "$filepath" ]; then
+        echo "$filename"
+        return 0
+      fi
+    fi
+  else
+    # Simulator screenshot
+    if xcrun simctl io booted screenshot "$filepath" 2>/dev/null; then
+      echo "$filename"
+      return 0
+    fi
   fi
   echo ""
   return 1
@@ -132,7 +178,8 @@ parse_elements() {
 # --- Run a mini YAML flow (returns 0 on success) ---
 run_mini_flow() {
   local yaml_path="$1"
-  timeout "$SCAN_TIMEOUT" maestro test "$yaml_path" > /dev/null 2>&1
+  # shellcheck disable=SC2086
+  timeout "$SCAN_TIMEOUT" maestro $MAESTRO_DEVICE_FLAG test "$yaml_path" > /dev/null 2>&1
   return $?
 }
 
@@ -184,6 +231,8 @@ log "======================================================"
 log "  HikeWise Discovery Scanner"
 log "  Scan ID: $SCAN_ID"
 log "  App ID:  $APP_ID"
+log "  Device:  $DEVICE_TYPE ($DEVICE_NAME)"
+log "  UDID:    ${DEVICE_UDID:-N/A (simulator)}"
 log "======================================================"
 
 # Initialize report structure

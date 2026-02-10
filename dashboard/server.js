@@ -70,11 +70,103 @@ let config = loadJSON(CONFIG_FILE, {
   hikewiseAppId: 'com.hikewise.app',
   autoRunTests: true,
   maxAgentRuntime: 3600, // 1 hour per task
-  claudeModel: 'opus' // or sonnet
+  claudeModel: 'opus', // or sonnet
+  deviceMode: 'auto', // auto | physical | simulator
+  physicalDeviceId: '' // UDID of physical device (auto-detected if empty)
 });
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// --- Physical Device Detection ---
+const { execFileSync: execFileSyncTop } = require('child_process');
+
+function getPhysicalDevices() {
+  try {
+    const output = execFileSyncTop('xcrun', ['devicectl', 'list', 'devices'], {
+      encoding: 'utf8', timeout: 10000
+    });
+    const devices = [];
+    const lines = output.split('\n');
+    for (const line of lines) {
+      // Parse the table output: Name, Hostname, Identifier, State, Model
+      const match = line.match(/^(.+?)\s{3,}(.+?)\s{3,}([A-F0-9-]{36})\s{3,}(.+?)\s{3,}(.+)$/i);
+      if (match && match[3] && match[3] !== 'Identifier' && !match[3].match(/^-+$/)) {
+        devices.push({
+          name: match[1].trim(),
+          hostname: match[2].trim(),
+          udid: match[3].trim(),
+          state: match[4].trim(),
+          model: match[5].trim(),
+          isPhysical: true,
+          isBooted: match[4].includes('available')
+        });
+      }
+    }
+    return devices;
+  } catch {
+    return [];
+  }
+}
+
+function getActiveDevice() {
+  // Returns { type: 'physical'|'simulator', udid, name } based on config
+  const mode = config.deviceMode || 'auto';
+
+  if (mode === 'physical' || mode === 'auto') {
+    const physical = getPhysicalDevices();
+    const connected = physical.find(d => d.isBooted);
+    if (connected) {
+      return {
+        type: 'physical',
+        udid: connected.udid,
+        name: connected.name,
+        model: connected.model
+      };
+    }
+    if (mode === 'physical') return null; // no physical device found
+  }
+
+  if (mode === 'simulator' || mode === 'auto') {
+    try {
+      const output = execFileSyncTop('xcrun', ['simctl', 'list', 'devices', '--json'], { encoding: 'utf8' });
+      const data = JSON.parse(output);
+      for (const [, devList] of Object.entries(data.devices || {})) {
+        for (const dev of devList) {
+          if (dev.state === 'Booted') {
+            return { type: 'simulator', udid: dev.udid, name: dev.name, model: dev.name };
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
+function takeDeviceScreenshot(filepath) {
+  const device = getActiveDevice();
+  if (!device) throw new Error('No device available. Connect an iPhone via USB or boot a simulator.');
+
+  if (device.type === 'physical') {
+    // Use Maestro to take screenshot on physical device via a mini flow
+    const tmpYaml = path.join(MAESTRO_DIR_LOCAL, 'flows', '_screenshot_tmp.yaml');
+    const appId = config.hikewiseAppId || 'com.hikewise.app';
+    fs.writeFileSync(tmpYaml, `appId: ${appId}\n---\n- takeScreenshot: ${filepath}\n`);
+    try {
+      execFileSyncTop('maestro', [
+        '--device', device.udid, 'test', tmpYaml
+      ], { encoding: 'utf8', timeout: 20000 });
+    } finally {
+      try { fs.unlinkSync(tmpYaml); } catch {}
+    }
+  } else {
+    execFileSyncTop('xcrun', [
+      'simctl', 'io', 'booted', 'screenshot', filepath
+    ], { encoding: 'utf8', timeout: 15000 });
+  }
+  return device;
+}
 
 // --- WebSocket broadcast ---
 function broadcast(type, data) {
@@ -338,73 +430,80 @@ app.get('/api/project/claude-md', (req, res) => {
 app.use('/recordings', express.static(RECORDINGS_DIR));
 app.use('/screenshots', express.static(SCREENSHOTS_DIR));
 
-// Get list of available iOS simulators
+// Get list of all available devices (physical + simulator)
 app.get('/api/simulator/list', (req, res) => {
   const { execFileSync } = require('child_process');
-  try {
-    const output = execFileSync('xcrun', ['simctl', 'list', 'devices', '--json'], { encoding: 'utf8' });
-    const data = JSON.parse(output);
-    const devices = [];
-    for (const [runtime, devList] of Object.entries(data.devices || {})) {
-      for (const dev of devList) {
-        if (dev.isAvailable) {
-          devices.push({
-            udid: dev.udid,
-            name: dev.name,
-            state: dev.state,
-            runtime: runtime.split('.').pop(),
-            isBooted: dev.state === 'Booted'
-          });
+  const allDevices = [];
+
+  // 1. Physical devices via xcrun devicectl
+  const physical = getPhysicalDevices();
+  physical.forEach(d => {
+    allDevices.push({
+      udid: d.udid,
+      name: d.name,
+      state: d.isBooted ? 'Connected' : d.state,
+      model: d.model,
+      isBooted: d.isBooted,
+      isPhysical: true,
+      platform: 'ios'
+    });
+  });
+
+  // 2. Simulators (only if device mode allows)
+  if (config.deviceMode !== 'physical') {
+    try {
+      const output = execFileSync('xcrun', ['simctl', 'list', 'devices', '--json'], { encoding: 'utf8' });
+      const data = JSON.parse(output);
+      for (const [runtime, devList] of Object.entries(data.devices || {})) {
+        for (const dev of devList) {
+          if (dev.isAvailable) {
+            allDevices.push({
+              udid: dev.udid,
+              name: dev.name,
+              state: dev.state,
+              runtime: runtime.split('.').pop(),
+              isBooted: dev.state === 'Booted',
+              isPhysical: false,
+              platform: 'ios'
+            });
+          }
         }
       }
-    }
-    // Sort: booted first, then iPhones, then by name
-    devices.sort((a, b) => {
-      if (a.isBooted !== b.isBooted) return b.isBooted - a.isBooted;
-      const aPhone = a.name.includes('iPhone') ? 0 : 1;
-      const bPhone = b.name.includes('iPhone') ? 0 : 1;
-      if (aPhone !== bPhone) return aPhone - bPhone;
-      return a.name.localeCompare(b.name);
-    });
-    res.json({ devices, platform: 'ios' });
-  } catch (e) {
-    // Try Android emulator as fallback
-    try {
-      const output = execFileSync('emulator', ['-list-avds'], { encoding: 'utf8' });
-      const avds = output.trim().split('\n').filter(Boolean);
-      // Check which are running
-      let runningDevices = [];
-      try {
-        const adbOut = execFileSync('adb', ['devices'], { encoding: 'utf8' });
-        runningDevices = adbOut.split('\n').filter(l => l.includes('device') && !l.includes('List')).map(l => l.split('\t')[0]);
-      } catch {}
-      const devices = avds.map(name => ({
-        name,
-        state: runningDevices.length > 0 ? 'Booted' : 'Shutdown',
-        isBooted: runningDevices.length > 0,
-        platform: 'android'
-      }));
-      res.json({ devices, platform: 'android' });
-    } catch {
-      res.json({ devices: [], platform: 'none', error: 'No simulator/emulator found. Install Xcode or Android SDK.' });
-    }
+    } catch {}
   }
+
+  // Sort: physical first, then booted, then iPhones
+  allDevices.sort((a, b) => {
+    if (a.isPhysical !== b.isPhysical) return b.isPhysical - a.isPhysical;
+    if (a.isBooted !== b.isBooted) return b.isBooted - a.isBooted;
+    const aPhone = a.name.includes('iPhone') ? 0 : 1;
+    const bPhone = b.name.includes('iPhone') ? 0 : 1;
+    if (aPhone !== bPhone) return aPhone - bPhone;
+    return a.name.localeCompare(b.name);
+  });
+
+  const active = getActiveDevice();
+  res.json({
+    devices: allDevices,
+    platform: 'ios',
+    activeDevice: active,
+    deviceMode: config.deviceMode || 'auto'
+  });
 });
 
-// Boot a simulator
+// Boot a simulator (physical devices are always "on")
 app.post('/api/simulator/boot', (req, res) => {
   const { execFileSync } = require('child_process');
-  const { udid, name, platform } = req.body;
+  const { udid, name, platform, isPhysical } = req.body;
+
+  if (isPhysical) {
+    return res.json({ status: 'already-connected', udid, name, message: 'Physical device is already connected.' });
+  }
+
   try {
-    if (platform === 'android') {
-      spawn('emulator', ['-avd', name], { detached: true, stdio: 'ignore' }).unref();
-      addHistory('simulator-booted', `Android emulator starting: ${name}`);
-    } else {
-      execFileSync('xcrun', ['simctl', 'boot', udid], { encoding: 'utf8' });
-      // Open Simulator.app to make it visible
-      spawn('open', ['-a', 'Simulator'], { detached: true, stdio: 'ignore' }).unref();
-      addHistory('simulator-booted', `iOS Simulator booted: ${name || udid}`);
-    }
+    execFileSync('xcrun', ['simctl', 'boot', udid], { encoding: 'utf8' });
+    spawn('open', ['-a', 'Simulator'], { detached: true, stdio: 'ignore' }).unref();
+    addHistory('simulator-booted', `iOS Simulator booted: ${name || udid}`);
     broadcast('simulator-status', { state: 'booting', name: name || udid });
     res.json({ status: 'booting', udid, name });
   } catch (e) {
@@ -426,28 +525,17 @@ app.post('/api/simulator/shutdown', (req, res) => {
   }
 });
 
-// Take a screenshot of the booted simulator
+// Take a screenshot of the active device (physical or simulator)
 app.post('/api/simulator/screenshot', (req, res) => {
-  const { execFileSync } = require('child_process');
   const filename = `screenshot-${Date.now()}.png`;
   const filePath = path.join(SCREENSHOTS_DIR, filename);
   try {
-    // Try iOS first
-    execFileSync('xcrun', ['simctl', 'io', 'booted', 'screenshot', filePath], { encoding: 'utf8' });
-    addHistory('screenshot-taken', `Screenshot captured: ${filename}`);
-    broadcast('screenshot', { file: filename, url: `/screenshots/${filename}`, timestamp: new Date().toISOString() });
-    res.json({ file: filename, url: `/screenshots/${filename}` });
+    const device = takeDeviceScreenshot(filePath);
+    addHistory('screenshot-taken', `Screenshot from ${device.type} (${device.name}): ${filename}`);
+    broadcast('screenshot', { file: filename, url: `/screenshots/${filename}`, timestamp: new Date().toISOString(), device: device.type });
+    res.json({ file: filename, url: `/screenshots/${filename}`, device: device.type });
   } catch (e) {
-    // Try adb for Android
-    try {
-      execFileSync('adb', ['exec-out', 'screencap', '-p'], { encoding: 'buffer', maxBuffer: 10 * 1024 * 1024 });
-      const buf = require('child_process').execFileSync('adb', ['exec-out', 'screencap', '-p'], { maxBuffer: 10 * 1024 * 1024 });
-      fs.writeFileSync(filePath, buf);
-      broadcast('screenshot', { file: filename, url: `/screenshots/${filename}` });
-      res.json({ file: filename, url: `/screenshots/${filename}` });
-    } catch {
-      res.status(500).json({ error: 'No booted simulator found. Boot a simulator first.' });
-    }
+    res.status(500).json({ error: e.message || 'No device available. Connect iPhone via USB or boot a simulator.' });
   }
 });
 
@@ -512,7 +600,12 @@ app.post('/api/maestro/record', (req, res) => {
   addHistory('maestro-recording', `Recording test: ${flowFile}`);
   broadcast('maestro-status', { running: true, recording: true, flow: flowFile });
 
-  recordProcess = spawn('maestro', ['record', flowPath, '--output', videoPath], {
+  const recDevice = getActiveDevice();
+  const recArgs = recDevice && recDevice.type === 'physical'
+    ? ['--device', recDevice.udid, 'record', flowPath, '--output', videoPath]
+    : ['record', flowPath, '--output', videoPath];
+
+  recordProcess = spawn('maestro', recArgs, {
     cwd: maestroDir,
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -563,21 +656,49 @@ app.post('/api/maestro/record/stop', (req, res) => {
   }
 });
 
-// Check if app is installed on simulator
+// Check if app is installed on active device
 app.get('/api/simulator/app-status', (req, res) => {
   const { execFileSync } = require('child_process');
   const appId = config.hikewiseAppId || 'com.hikewise.app';
-  try {
-    // Check iOS
-    const output = execFileSync('xcrun', ['simctl', 'get_app_container', 'booted', appId], { encoding: 'utf8' });
-    res.json({ installed: true, platform: 'ios', appId, path: output.trim() });
-  } catch {
+  const device = getActiveDevice();
+
+  if (!device) {
+    return res.json({ installed: false, appId, message: 'No device connected. Plug in your iPhone or boot a simulator.' });
+  }
+
+  if (device.type === 'physical') {
+    // For physical devices, check via devicectl
     try {
-      // Check Android
-      execFileSync('adb', ['shell', 'pm', 'list', 'packages', appId], { encoding: 'utf8' });
-      res.json({ installed: true, platform: 'android', appId });
+      const output = execFileSync('xcrun', [
+        'devicectl', 'device', 'info', 'apps',
+        '--device', device.udid
+      ], { encoding: 'utf8', timeout: 15000 });
+      const found = output.includes(appId);
+      res.json({
+        installed: found,
+        platform: 'ios',
+        deviceType: 'physical',
+        deviceName: device.name,
+        appId,
+        message: found ? `Installed on ${device.name}` : `Not found on ${device.name}. Install via Xcode or TestFlight.`
+      });
     } catch {
-      res.json({ installed: false, appId, message: 'App not installed. Build with: eas build --profile development --platform ios' });
+      res.json({
+        installed: false,
+        platform: 'ios',
+        deviceType: 'physical',
+        deviceName: device.name,
+        appId,
+        message: `Could not check ${device.name}. Ensure it is unlocked and trusted.`
+      });
+    }
+  } else {
+    // Simulator
+    try {
+      const output = execFileSync('xcrun', ['simctl', 'get_app_container', 'booted', appId], { encoding: 'utf8' });
+      res.json({ installed: true, platform: 'ios', deviceType: 'simulator', appId, path: output.trim() });
+    } catch {
+      res.json({ installed: false, appId, deviceType: 'simulator', message: 'Not installed on simulator. Build with: eas build --profile development --platform ios' });
     }
   }
 });
@@ -600,6 +721,12 @@ app.post('/api/simulator/install', (req, res) => {
   }
 });
 
+// Get active device info
+app.get('/api/device/active', (req, res) => {
+  const device = getActiveDevice();
+  res.json(device || { type: 'none', message: 'No device connected' });
+});
+
 // --- Discovery Scanner ---
 
 // Serve discovery screenshots
@@ -615,11 +742,15 @@ app.post('/api/scanner/start', (req, res) => {
   addHistory('scanner-started', `Discovery scan started: ${currentScanId}`);
   broadcast('scanner-status', { running: true, scanId: currentScanId });
 
+  const scanDevice = getActiveDevice();
   const env = {
     ...process.env,
     DASHBOARD_URL: `http://localhost:${PORT}`,
     APP_ID: config.hikewiseAppId || 'com.hikewise.app',
-    SCAN_ID: currentScanId
+    SCAN_ID: currentScanId,
+    DEVICE_TYPE: scanDevice ? scanDevice.type : 'simulator',
+    DEVICE_UDID: scanDevice ? scanDevice.udid : '',
+    DEVICE_NAME: scanDevice ? scanDevice.name : ''
   };
 
   scannerProcess = spawn('bash', [SCANNER_SCRIPT], {
@@ -1018,12 +1149,17 @@ function runMaestroTests(flowFile) {
     resolvedFlowPath = fs.existsSync(localPath) ? localPath : (repoPath && fs.existsSync(repoPath) ? repoPath : localPath);
   }
 
+  // Detect active device for maestro --device flag
+  const activeDevice = getActiveDevice();
+  const deviceFlag = activeDevice && activeDevice.type === 'physical'
+    ? `--device ${activeDevice.udid} ` : '';
+
   const cmd = flowFile && flowFile !== 'all'
-    ? `maestro test "${resolvedFlowPath}" --format JUNIT`
-    : `maestro test "${path.join(MAESTRO_DIR_LOCAL, 'flows')}" --format JUNIT`;
+    ? `maestro ${deviceFlag}test "${resolvedFlowPath}" --format JUNIT`
+    : `maestro ${deviceFlag}test "${path.join(MAESTRO_DIR_LOCAL, 'flows')}" --format JUNIT`;
   
   const testProcess = spawn('bash', ['-c', cmd], {
-    cwd: flowsDir,
+    cwd: MAESTRO_DIR_LOCAL,
     stdio: ['ignore', 'pipe', 'pipe']
   });
   
