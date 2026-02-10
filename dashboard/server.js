@@ -153,8 +153,9 @@ function takeDeviceScreenshot(filepath) {
   if (device.type === 'physical') {
     // Use Maestro to take screenshot on physical device via a mini flow
     const tmpYaml = path.join(MAESTRO_DIR_LOCAL, 'flows', '_screenshot_tmp.yaml');
-    const appId = config.hikewiseAppId || 'com.hikewise.app';
-    fs.writeFileSync(tmpYaml, `appId: ${appId}\n---\n- takeScreenshot: ${filepath}\n`);
+    // Use Expo Go appId when in expo-go mode, otherwise use the configured app ID
+    const effectiveAppId = (config.appMode === 'expo-go') ? 'host.exp.Exponent' : (config.hikewiseAppId || 'com.hikewise.app');
+    fs.writeFileSync(tmpYaml, `appId: ${effectiveAppId}\n---\n- takeScreenshot: ${filepath}\n`);
     try {
       execFileSyncTop('maestro', [
         '--device', device.udid, 'test', tmpYaml
