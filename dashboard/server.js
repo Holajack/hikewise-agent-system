@@ -85,25 +85,28 @@ const { execFileSync: execFileSyncTop } = require('child_process');
 
 function getPhysicalDevices() {
   try {
-    const output = execFileSyncTop('xcrun', ['devicectl', 'list', 'devices'], {
+    // Use JSON output to get the real hardware UDID (not CoreDevice identifier)
+    const tmpJson = path.join(DATA_DIR, '_devices_tmp.json');
+    execFileSyncTop('xcrun', ['devicectl', 'list', 'devices', '--json-output', tmpJson], {
       encoding: 'utf8', timeout: 10000
     });
+    const data = JSON.parse(fs.readFileSync(tmpJson, 'utf8'));
+    fs.unlinkSync(tmpJson);
+
     const devices = [];
-    const lines = output.split('\n');
-    for (const line of lines) {
-      // Parse the table output: Name, Hostname, Identifier, State, Model
-      const match = line.match(/^(.+?)\s{3,}(.+?)\s{3,}([A-F0-9-]{36})\s{3,}(.+?)\s{3,}(.+)$/i);
-      if (match && match[3] && match[3] !== 'Identifier' && !match[3].match(/^-+$/)) {
-        devices.push({
-          name: match[1].trim(),
-          hostname: match[2].trim(),
-          udid: match[3].trim(),
-          state: match[4].trim(),
-          model: match[5].trim(),
-          isPhysical: true,
-          isBooted: match[4].includes('available')
-        });
-      }
+    for (const d of (data.result?.devices || [])) {
+      const hw = d.hardwareProperties || {};
+      const conn = d.connectionProperties || {};
+      devices.push({
+        name: d.name || hw.marketingName || 'iPhone',
+        hostname: d.hostname || '',
+        coreDeviceId: d.identifier,           // CoreDevice UUID (not for Maestro)
+        udid: hw.udid || d.identifier,        // Real iOS UDID (for Maestro)
+        state: conn.transportType || 'unknown',
+        model: hw.marketingName || hw.productType || '',
+        isPhysical: true,
+        isBooted: conn.transportType === 'wired' || conn.transportType === 'localNetwork'
+      });
     }
     return devices;
   } catch {
@@ -157,8 +160,9 @@ function takeDeviceScreenshot(filepath) {
     const effectiveAppId = (config.appMode === 'expo-go') ? 'host.exp.Exponent' : (config.hikewiseAppId || 'com.hikewise.app');
     fs.writeFileSync(tmpYaml, `appId: ${effectiveAppId}\n---\n- takeScreenshot: ${filepath}\n`);
     try {
+      // Physical devices need the maestro-ios-device bridge (--driver-host-port 6001)
       execFileSyncTop('maestro', [
-        '--device', device.udid, 'test', tmpYaml
+        '--driver-host-port', '6001', '--device', device.udid, 'test', tmpYaml
       ], { encoding: 'utf8', timeout: 20000 });
     } finally {
       try { fs.unlinkSync(tmpYaml); } catch {}
@@ -605,7 +609,7 @@ app.post('/api/maestro/record', (req, res) => {
 
   const recDevice = getActiveDevice();
   const recArgs = recDevice && recDevice.type === 'physical'
-    ? ['--device', recDevice.udid, 'record', flowPath, '--output', videoPath]
+    ? ['--driver-host-port', '6001', '--device', recDevice.udid, 'record', flowPath, '--output', videoPath]
     : ['record', flowPath, '--output', videoPath];
 
   recordProcess = spawn('maestro', recArgs, {
@@ -1224,10 +1228,10 @@ function runMaestroTests(flowFile) {
     resolvedFlowPath = fs.existsSync(localPath) ? localPath : (repoPath && fs.existsSync(repoPath) ? repoPath : localPath);
   }
 
-  // Detect active device for maestro --device flag
+  // Detect active device for maestro flags (physical needs bridge port)
   const activeDevice = getActiveDevice();
   const deviceFlag = activeDevice && activeDevice.type === 'physical'
-    ? `--device ${activeDevice.udid} ` : '';
+    ? `--driver-host-port 6001 --device ${activeDevice.udid} ` : '';
 
   const cmd = flowFile && flowFile !== 'all'
     ? `maestro ${deviceFlag}test "${resolvedFlowPath}" --format JUNIT`

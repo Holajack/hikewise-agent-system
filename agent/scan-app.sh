@@ -28,6 +28,16 @@
 
 set -uo pipefail
 
+# macOS doesn't have `timeout` — use gtimeout from coreutils or a built-in fallback
+if ! command -v timeout &>/dev/null; then
+  if command -v gtimeout &>/dev/null; then
+    timeout() { gtimeout "$@"; }
+  else
+    # Simple fallback: just run the command without a timeout
+    timeout() { shift; "$@"; }
+  fi
+fi
+
 # --- Logging (defined first so it can be used everywhere) ---
 log() {
   echo "[scanner][$(date '+%H:%M:%S')] $1"
@@ -53,12 +63,45 @@ DEVICE_NAME="${DEVICE_NAME:-}"
 
 # Auto-detect device if not specified
 if [ "$DEVICE_TYPE" = "auto" ] || [ -z "$DEVICE_UDID" ]; then
-  PHYSICAL_UDID=$(xcrun devicectl list devices 2>/dev/null | grep -i "available" | head -1 | grep -oE '[A-F0-9-]{36}' || true)
-  if [ -n "$PHYSICAL_UDID" ]; then
-    DEVICE_TYPE="physical"
-    DEVICE_UDID="$PHYSICAL_UDID"
-    DEVICE_NAME=$(xcrun devicectl list devices 2>/dev/null | grep "$PHYSICAL_UDID" | awk '{print $1}' || echo "Physical iPhone")
+  # Use JSON output to get the real hardware UDID (not CoreDevice identifier)
+  TMPJSON=$(mktemp /tmp/devices.XXXX.json)
+  if xcrun devicectl list devices --json-output "$TMPJSON" 2>/dev/null; then
+    REAL_UDID=$(python3 -c "
+import json
+with open('$TMPJSON') as f:
+    data = json.load(f)
+devices = data.get('result',{}).get('devices',[])
+for d in devices:
+    hw = d.get('hardwareProperties',{})
+    conn = d.get('connectionProperties',{})
+    if conn.get('transportType') == 'wired':
+        print(hw.get('udid',''))
+        break
+" 2>/dev/null || true)
+    REAL_NAME=$(python3 -c "
+import json
+with open('$TMPJSON') as f:
+    data = json.load(f)
+devices = data.get('result',{}).get('devices',[])
+for d in devices:
+    conn = d.get('connectionProperties',{})
+    if conn.get('transportType') == 'wired':
+        print(d.get('name') or d.get('hardwareProperties',{}).get('marketingName','iPhone'))
+        break
+" 2>/dev/null || true)
+    rm -f "$TMPJSON"
+
+    if [ -n "$REAL_UDID" ]; then
+      DEVICE_TYPE="physical"
+      DEVICE_UDID="$REAL_UDID"
+      DEVICE_NAME="${REAL_NAME:-Physical iPhone}"
+    else
+      DEVICE_TYPE="simulator"
+      DEVICE_UDID=""
+      DEVICE_NAME="Simulator"
+    fi
   else
+    rm -f "$TMPJSON"
     DEVICE_TYPE="simulator"
     DEVICE_UDID=""
     DEVICE_NAME="Simulator"
@@ -66,9 +109,11 @@ if [ "$DEVICE_TYPE" = "auto" ] || [ -z "$DEVICE_UDID" ]; then
 fi
 
 # Maestro device flag
+# Physical devices need the maestro-ios-device bridge (--driver-host-port 6001)
 MAESTRO_DEVICE_FLAG=""
+MAESTRO_BRIDGE_PORT="${MAESTRO_BRIDGE_PORT:-6001}"
 if [ "$DEVICE_TYPE" = "physical" ] && [ -n "$DEVICE_UDID" ]; then
-  MAESTRO_DEVICE_FLAG="--device $DEVICE_UDID"
+  MAESTRO_DEVICE_FLAG="--driver-host-port $MAESTRO_BRIDGE_PORT --device $DEVICE_UDID"
 fi
 
 # Expo Go support
@@ -177,14 +222,19 @@ run_mini_flow() {
   return $?
 }
 
-# Capture hierarchy XML for the current screen
+# Capture hierarchy for the current screen
+# Physical devices output JSON (with "None: " prefix), simulators output XML
 capture_hierarchy() {
   local screen_name="$1"
-  local output_file="$DISCOVERY_DIR/${SCAN_ID}_hierarchy_${screen_name}.xml"
+  local raw_file="$DISCOVERY_DIR/${SCAN_ID}_hierarchy_${screen_name}.raw"
+  local output_file="$DISCOVERY_DIR/${SCAN_ID}_hierarchy_${screen_name}.json"
 
   # shellcheck disable=SC2086
-  if timeout "$SCAN_TIMEOUT" maestro $MAESTRO_DEVICE_FLAG hierarchy > "$output_file" 2>/dev/null; then
-    if [ -s "$output_file" ]; then
+  if timeout "$SCAN_TIMEOUT" maestro $MAESTRO_DEVICE_FLAG hierarchy > "$raw_file" 2>/dev/null; then
+    if [ -s "$raw_file" ]; then
+      # Strip "None: " prefix and leading blank lines (physical device JSON output)
+      sed '1s/^None: //' "$raw_file" | sed '/^$/d' > "$output_file"
+      rm -f "$raw_file"
       echo "$output_file"
       return 0
     fi
@@ -193,13 +243,16 @@ capture_hierarchy() {
   # Retry once
   sleep 2
   # shellcheck disable=SC2086
-  if timeout "$SCAN_TIMEOUT" maestro $MAESTRO_DEVICE_FLAG hierarchy > "$output_file" 2>/dev/null; then
-    if [ -s "$output_file" ]; then
+  if timeout "$SCAN_TIMEOUT" maestro $MAESTRO_DEVICE_FLAG hierarchy > "$raw_file" 2>/dev/null; then
+    if [ -s "$raw_file" ]; then
+      sed '1s/^None: //' "$raw_file" | sed '/^$/d' > "$output_file"
+      rm -f "$raw_file"
       echo "$output_file"
       return 0
     fi
   fi
 
+  rm -f "$raw_file"
   echo ""
   return 1
 }
@@ -234,13 +287,71 @@ SSEOF
   return 1
 }
 
-# Parse hierarchy XML to JSON using the Python parser
+# Parse hierarchy file (JSON or XML) to structured JSON
 parse_elements() {
-  local xml_file="$1"
-  if [ -f "$xml_file" ] && [ -s "$xml_file" ]; then
-    python3 "$PARSER" "$xml_file" 2>/dev/null
-  else
+  local hier_file="$1"
+  if [ ! -f "$hier_file" ] || [ ! -s "$hier_file" ]; then
     echo '{"totalElements":0,"textElements":[],"testIds":[],"buttons":[],"inputFields":[]}'
+    return
+  fi
+
+  # Detect format: JSON starts with { or [, XML starts with <
+  # Skip leading whitespace/newlines to find the real first character
+  local first_char=$(sed '/^[[:space:]]*$/d' "$hier_file" | head -c 1)
+  if [ "$first_char" = "{" ] || [ "$first_char" = "[" ]; then
+    # JSON hierarchy from physical device
+    python3 - "$hier_file" << 'PYEOF'
+import json, sys
+
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+
+text_elements = []
+test_ids = []
+buttons = []
+input_fields = []
+total = [0]
+seen_text = set()
+seen_ids = set()
+
+def walk(node):
+    total[0] += 1
+    attrs = node.get("attributes", {})
+    text = (attrs.get("text") or attrs.get("accessibilityText") or "").strip()
+    test_id = (attrs.get("resource-id") or attrs.get("testId") or "").strip()
+    enabled = attrs.get("enabled", "false") == "true"
+    focused = attrs.get("focused", "false") == "true"
+
+    # Parse bounds "[x1,y1][x2,y2]"
+    bounds = attrs.get("bounds", "")
+
+    if text and text not in seen_text and len(text) < 500:
+        seen_text.add(text)
+        text_elements.append(text)
+
+    if test_id and test_id not in seen_ids:
+        seen_ids.add(test_id)
+        test_ids.append(test_id)
+
+    # Buttons: enabled elements with text
+    if text and enabled:
+        buttons.append({"text": text, "testId": test_id or None, "enabled": enabled})
+
+    for child in node.get("children", []):
+        walk(child)
+
+walk(data)
+print(json.dumps({
+    "totalElements": total[0],
+    "textElements": text_elements,
+    "testIds": test_ids,
+    "buttons": buttons,
+    "inputFields": input_fields
+}))
+PYEOF
+  else
+    # XML hierarchy from simulator - use existing parser
+    python3 "$PARSER" "$hier_file" 2>/dev/null
   fi
 }
 
@@ -327,111 +438,115 @@ PYEOF
 # HIERARCHY ANALYSIS HELPERS (Python inline)
 # ============================================================
 
-# Find bottom tab bar items from a hierarchy XML file.
-# Returns JSON array of {text, bounds_y, bounds_x} for items in the bottom ~15% of screen.
+# Find bottom tab bar items from a hierarchy file (JSON or XML).
+# Returns JSON array of {text, y, x} for items in the bottom ~15% of screen.
 find_bottom_tabs() {
-  local xml_file="$1"
-  python3 << 'PYEOF' "$xml_file"
-import xml.etree.ElementTree as ET
-import json, sys
+  local hier_file="$1"
+  python3 - "$hier_file" << 'PYEOF'
+import json, sys, re
 
-xml_file = sys.argv[1]
-try:
-    tree = ET.parse(xml_file)
-except:
-    print("[]")
-    sys.exit(0)
+def parse_bounds(bounds_str):
+    """Parse bounds '[x1,y1][x2,y2]' -> (x1,y1,x2,y2) or None"""
+    try:
+        parts = bounds_str.replace("][", ",").strip("[]").split(",")
+        if len(parts) == 4:
+            return tuple(int(p) for p in parts)
+    except:
+        pass
+    return None
 
-root = tree.getroot()
+hier_file = sys.argv[1]
+with open(hier_file) as f:
+    content = f.read().strip()
 
-# First pass: find screen dimensions
-max_y = 0
-def find_max_y(node):
-    global max_y
-    bounds = node.get("bounds", "")
-    if bounds:
-        try:
-            parts = bounds.replace("][", ",").strip("[]").split(",")
-            if len(parts) == 4:
-                y2 = int(parts[3])
-                if y2 > max_y:
-                    max_y = y2
-        except:
-            pass
-    for child in node:
-        find_max_y(child)
+# Detect format
+is_json = content.startswith("{") or content.startswith("[")
 
-find_max_y(root)
-if max_y == 0:
-    max_y = 2532  # default iPhone 14 Pro Max
-
-# Bottom 15% threshold
-bottom_threshold = max_y * 0.85
-
-# Second pass: find tappable items in the bottom region
+max_y = [0]
 tabs = []
 seen_text = set()
 
-def find_tabs(node):
-    text = (node.get("text") or node.get("accessibilityText") or "").strip()
-    clickable = node.get("clickable", "false").lower() == "true"
-    node_class = (node.get("class") or node.get("type") or node.tag or "").lower()
+def find_max_y_json(node):
+    attrs = node.get("attributes", {})
+    b = parse_bounds(attrs.get("bounds", ""))
+    if b and b[3] > max_y[0]:
+        max_y[0] = b[3]
+    for child in node.get("children", []):
+        find_max_y_json(child)
 
-    bounds = node.get("bounds", "")
-    center_y = 0
-    center_x = 0
-    if bounds:
-        try:
-            parts = bounds.replace("][", ",").strip("[]").split(",")
-            if len(parts) == 4:
-                x1, y1, x2, y2 = int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3])
-                center_y = (y1 + y2) / 2
-                center_x = (x1 + x2) / 2
-        except:
-            pass
+def find_tabs_json(node):
+    attrs = node.get("attributes", {})
+    text = (attrs.get("text") or attrs.get("accessibilityText") or "").strip()
+    enabled = attrs.get("enabled", "false") == "true"
+    b = parse_bounds(attrs.get("bounds", ""))
 
-    is_tappable = clickable or any(k in node_class for k in ("touchable", "pressable", "button", "tab"))
+    if b:
+        cx, cy = (b[0]+b[2])/2, (b[1]+b[3])/2
+        threshold = max_y[0] * 0.85
+        if text and enabled and cy > threshold and len(text) < 30:
+            if text not in seen_text:
+                seen_text.add(text)
+                tabs.append({"text": text, "y": cy, "x": cx})
 
-    # Tab bar items: tappable, in bottom region, short text
-    if text and is_tappable and center_y > bottom_threshold and len(text) < 30:
-        if text not in seen_text:
-            seen_text.add(text)
-            tabs.append({"text": text, "y": center_y, "x": center_x})
+    for child in node.get("children", []):
+        find_tabs_json(child)
 
-    # Also check for accessibility labels on image-based tabs (no text but has label)
-    acc_label = (node.get("accessibilityLabel") or "").strip()
-    if acc_label and not text and is_tappable and center_y > bottom_threshold and len(acc_label) < 30:
-        if acc_label not in seen_text:
-            seen_text.add(acc_label)
-            tabs.append({"text": acc_label, "y": center_y, "x": center_x})
+if is_json:
+    data = json.loads(content)
+    find_max_y_json(data)
+    if max_y[0] == 0:
+        max_y[0] = 932  # iPhone logical height
+    find_tabs_json(data)
+else:
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(content)
+    except:
+        print("[]")
+        sys.exit(0)
 
-    for child in node:
-        find_tabs(child)
+    def find_max_xml(node):
+        b = parse_bounds(node.get("bounds", ""))
+        if b and b[3] > max_y[0]:
+            max_y[0] = b[3]
+        for child in node:
+            find_max_xml(child)
 
-find_tabs(root)
+    def find_tabs_xml(node):
+        text = (node.get("text") or node.get("accessibilityText") or "").strip()
+        clickable = node.get("clickable", "false").lower() == "true"
+        b = parse_bounds(node.get("bounds", ""))
+        if b:
+            cx, cy = (b[0]+b[2])/2, (b[1]+b[3])/2
+            threshold = max_y[0] * 0.85
+            if text and (clickable or True) and cy > threshold and len(text) < 30:
+                if text not in seen_text:
+                    seen_text.add(text)
+                    tabs.append({"text": text, "y": cy, "x": cx})
+        for child in node:
+            find_tabs_xml(child)
 
-# Sort left to right
+    find_max_xml(root)
+    if max_y[0] == 0:
+        max_y[0] = 2532
+    find_tabs_xml(root)
+
 tabs.sort(key=lambda t: t["x"])
 print(json.dumps(tabs))
 PYEOF
 }
 
-# Find login/continue buttons from a hierarchy XML file.
-# Looks for buttons with text like "Continue", "Get Started", "Sign In", "Log In", etc.
+# Find login/continue buttons from a hierarchy file (JSON or XML).
 find_login_buttons() {
-  local xml_file="$1"
-  python3 << 'PYEOF' "$xml_file"
-import xml.etree.ElementTree as ET
+  local hier_file="$1"
+  python3 - "$hier_file" << 'PYEOF'
 import json, sys, re
 
-xml_file = sys.argv[1]
-try:
-    tree = ET.parse(xml_file)
-except:
-    print("[]")
-    sys.exit(0)
+hier_file = sys.argv[1]
+with open(hier_file) as f:
+    content = f.read().strip()
 
-root = tree.getroot()
+is_json = content.startswith("{") or content.startswith("[")
 buttons = []
 
 login_patterns = [
@@ -446,103 +561,126 @@ login_patterns = [
     r"skip",
 ]
 
-def walk(node):
-    text = (node.get("text") or node.get("accessibilityText") or "").strip()
-    clickable = node.get("clickable", "false").lower() == "true"
-    node_class = (node.get("class") or node.get("type") or node.tag or "").lower()
-    is_tappable = clickable or any(k in node_class for k in ("touchable", "pressable", "button"))
+def check_text(text):
+    text_lower = text.lower()
+    for pattern in login_patterns:
+        if re.search(pattern, text_lower):
+            buttons.append({"text": text, "pattern": pattern})
+            return
 
-    if text and is_tappable:
-        text_lower = text.lower()
-        for pattern in login_patterns:
-            if re.search(pattern, text_lower):
-                buttons.append({"text": text, "pattern": pattern})
-                break
+if is_json:
+    data = json.loads(content)
+    def walk_json(node):
+        attrs = node.get("attributes", {})
+        text = (attrs.get("text") or attrs.get("accessibilityText") or "").strip()
+        enabled = attrs.get("enabled", "false") == "true"
+        if text and enabled:
+            check_text(text)
+        for child in node.get("children", []):
+            walk_json(child)
+    walk_json(data)
+else:
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(content)
+    except:
+        print("[]")
+        sys.exit(0)
+    def walk_xml(node):
+        text = (node.get("text") or node.get("accessibilityText") or "").strip()
+        clickable = node.get("clickable", "false").lower() == "true"
+        if text and clickable:
+            check_text(text)
+        for child in node:
+            walk_xml(child)
+    walk_xml(root)
 
-    for child in node:
-        walk(child)
-
-walk(root)
 print(json.dumps(buttons))
 PYEOF
 }
 
-# Find all tappable elements on a screen for deep exploration.
+# Find all tappable elements on a screen for deep exploration (JSON or XML).
 # Returns JSON array of {text, testId, x, y, region} where region is top/middle/bottom.
 find_tappable_elements() {
-  local xml_file="$1"
-  python3 << 'PYEOF' "$xml_file"
-import xml.etree.ElementTree as ET
+  local hier_file="$1"
+  python3 - "$hier_file" << 'PYEOF'
 import json, sys
 
-xml_file = sys.argv[1]
-try:
-    tree = ET.parse(xml_file)
-except:
-    print("[]")
-    sys.exit(0)
+def parse_bounds(bounds_str):
+    try:
+        parts = bounds_str.replace("][", ",").strip("[]").split(",")
+        if len(parts) == 4:
+            return tuple(int(p) for p in parts)
+    except:
+        pass
+    return None
 
-root = tree.getroot()
+hier_file = sys.argv[1]
+with open(hier_file) as f:
+    content = f.read().strip()
 
-# Find screen dimensions
-max_y = 0
-def find_max(node):
-    global max_y
-    bounds = node.get("bounds", "")
-    if bounds:
-        try:
-            parts = bounds.replace("][", ",").strip("[]").split(",")
-            if len(parts) == 4 and int(parts[3]) > max_y:
-                max_y = int(parts[3])
-        except:
-            pass
-    for c in node:
-        find_max(c)
-find_max(root)
-if max_y == 0:
-    max_y = 2532
+is_json = content.startswith("{") or content.startswith("[")
 
+max_y = [0]
 items = []
 seen = set()
-
-# Skip common non-navigable text
 skip_patterns = {"back", "close", "cancel", "ok", "done", "x", "search", "type", "enter"}
 
-def walk(node):
-    text = (node.get("text") or node.get("accessibilityText") or "").strip()
-    test_id = (node.get("resource-id") or node.get("testId") or node.get("accessibilityIdentifier") or "").strip()
-    clickable = node.get("clickable", "false").lower() == "true"
-    node_class = (node.get("class") or node.get("type") or node.tag or "").lower()
-    is_tappable = clickable or any(k in node_class for k in ("touchable", "pressable", "button"))
+def add_item(text, test_id, bounds_str):
+    b = parse_bounds(bounds_str)
+    if not b:
+        return
+    cx, cy = (b[0]+b[2])/2, (b[1]+b[3])/2
+    key = text or test_id
+    if key and key not in seen and key.lower() not in skip_patterns and len(key) < 60:
+        seen.add(key)
+        my = max_y[0] if max_y[0] > 0 else 932
+        region = "top" if cy < my * 0.15 else ("bottom" if cy > my * 0.85 else "middle")
+        items.append({"text": text, "testId": test_id, "x": round(cx), "y": round(cy), "region": region})
 
-    bounds = node.get("bounds", "")
-    cx, cy = 0, 0
-    if bounds:
-        try:
-            parts = bounds.replace("][", ",").strip("[]").split(",")
-            if len(parts) == 4:
-                cx = (int(parts[0]) + int(parts[2])) / 2
-                cy = (int(parts[1]) + int(parts[3])) / 2
-        except:
-            pass
+if is_json:
+    data = json.loads(content)
+    def find_max_json(node):
+        b = parse_bounds(node.get("attributes", {}).get("bounds", ""))
+        if b and b[3] > max_y[0]:
+            max_y[0] = b[3]
+        for c in node.get("children", []):
+            find_max_json(c)
+    def walk_json(node):
+        attrs = node.get("attributes", {})
+        text = (attrs.get("text") or attrs.get("accessibilityText") or "").strip()
+        test_id = (attrs.get("resource-id") or attrs.get("testId") or "").strip()
+        enabled = attrs.get("enabled", "false") == "true"
+        if enabled and (text or test_id):
+            add_item(text, test_id, attrs.get("bounds", ""))
+        for c in node.get("children", []):
+            walk_json(c)
+    find_max_json(data)
+    walk_json(data)
+else:
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(content)
+    except:
+        print("[]")
+        sys.exit(0)
+    def find_max_xml(node):
+        b = parse_bounds(node.get("bounds", ""))
+        if b and b[3] > max_y[0]:
+            max_y[0] = b[3]
+        for c in node:
+            find_max_xml(c)
+    def walk_xml(node):
+        text = (node.get("text") or node.get("accessibilityText") or "").strip()
+        test_id = (node.get("resource-id") or node.get("testId") or "").strip()
+        clickable = node.get("clickable", "false").lower() == "true"
+        if clickable and (text or test_id):
+            add_item(text, test_id, node.get("bounds", ""))
+        for c in node:
+            walk_xml(c)
+    find_max_xml(root)
+    walk_xml(root)
 
-    if is_tappable and (text or test_id):
-        key = text or test_id
-        if key not in seen and key.lower() not in skip_patterns and len(key) < 60:
-            seen.add(key)
-            region = "top" if cy < max_y * 0.15 else ("bottom" if cy > max_y * 0.85 else "middle")
-            items.append({
-                "text": text,
-                "testId": test_id,
-                "x": round(cx),
-                "y": round(cy),
-                "region": region
-            })
-
-    for child in node:
-        walk(child)
-
-walk(root)
 print(json.dumps(items))
 PYEOF
 }
